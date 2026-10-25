@@ -32,6 +32,22 @@
   }
   #fallback[hidden] { display: none; }
 
+  /* invisible hit areas laid over the words printed on the curtain */
+  #actions[hidden] { display: none; }
+  #actions button {
+    position: fixed; z-index: 3; margin: 0; padding: 0;
+    transform: translate(-50%, -50%);
+    background: none; border: 0; border-radius: 8px;
+    color: transparent; font-size: 1px; cursor: pointer;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  #actions button:focus { outline: none; }
+  #actions button:focus-visible { outline: 1px solid rgba(255, 255, 255, .75); outline-offset: 2px; }
+  .sr {
+    position: fixed; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+
   /* ---------- tuning panel (desktop, press T) ---------- */
   #panel {
     --fg: #f6f2ea;
@@ -134,6 +150,14 @@
 <canvas id="gl" tabindex="0" aria-label="前鏡頭影像印在垂掛的紗布上。滑鼠或手指停在哪裡，風就從那裡的布後面往前吹，停得越久風越強。"></canvas>
 <video id="cam" playsinline muted autoplay></video>
 <p id="fallback" hidden>這個瀏覽器無法使用 WebGL，所以紗布無法顯示。</p>
+
+<!-- shown only when the camera can't be opened; the words themselves are printed on the curtain -->
+<div id="actions" hidden>
+  <button id="a-retry" type="button">try camera again</button>
+  <button id="a-media" type="button">use photo or video</button>
+</div>
+<input id="media" type="file" accept="image/*,video/*" hidden>
+<p id="status" class="sr" role="status" aria-live="polite"></p>
 
 <aside id="panel" aria-label="參數" aria-hidden="true">
   <header>
@@ -422,6 +446,7 @@ uniform vec3 uInk;
 uniform sampler2D uVideo;
 uniform float uMix;
 uniform float uVideoAspect;
+uniform float uMirror;
 uniform float uScreenAspect;
 uniform float uSheer;
 uniform float uLight;
@@ -454,7 +479,7 @@ void main() {
   vec2 t = s;
   if (uVideoAspect > uScreenAspect) t.x = 0.5 + (s.x - 0.5) * uScreenAspect / uVideoAspect;
   else t.y = 0.5 + (s.y - 0.5) * uVideoAspect / uScreenAspect;
-  t.x = 1.0 - t.x;
+  if (uMirror > 0.5) t.x = 1.0 - t.x;
   vec3 cam = texture2D(uVideo, clamp(t, 0.0, 1.0)).rgb;
   float luma = dot(cam, vec3(0.299, 0.587, 0.114));
   cam = clamp(mix(vec3(luma), cam, uSat), 0.0, 1.0);
@@ -562,8 +587,37 @@ function drawTitle() {
   tctx.font = font(24);
   tctx.fillText(titleSub, w / 2, at(372));
 
+  // camera refused: say so, and print the two ways forward as underlined links
+  actionRects = [];
+  if (camState === 'failed') {
+    tctx.fillText(failNote, w / 2, at(458));
+    tctx.font = font(18);
+    const px = 18 * sc * k;
+    ACTIONS.forEach(([label, fy]) => {
+      const y = at(fy), tw = tctx.measureText(label).width;
+      tctx.fillText(label, w / 2, y);
+      tctx.fillRect(w / 2 - tw / 2, y + px * 0.44, tw, Math.max(1, px * 0.055));
+      actionRects.push({ x: W / 2, y: y / k, w: tw / k + 32, h: Math.min(44, 35 * sc) });
+    });
+  }
+  placeActions();
+
   gl.bindTexture(gl.TEXTURE_2D, titleTex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, titleCanvas);
+}
+
+// Figma: "try camera again" and "use photo or video", 18px, underlined
+const ACTIONS = [['try camera again', 496.5], ['use photo or video', 531.5]];
+const actionsEl = document.getElementById('actions');
+const actionBtns = [document.getElementById('a-retry'), document.getElementById('a-media')];
+let actionRects = [];
+
+function placeActions() {
+  actionsEl.hidden = actionRects.length === 0;
+  actionRects.forEach((r, i) => {
+    const b = actionBtns[i].style;
+    b.left = `${r.x}px`; b.top = `${r.y}px`; b.width = `${r.w}px`; b.height = `${r.h}px`;
+  });
 }
 
 /* ---------------- Cloth ---------------- */
@@ -888,8 +942,13 @@ function interpolate(alpha) {
 }
 
 /* ---------------- Camera ---------------- */
-let camState = 'idle', videoReady = false, videoAspect = 16 / 9, mix = 0, newFrame = true;
+// camState: idle → starting → live, or → failed → (try again) starting … / (photo or video) media
+let camState = 'idle', source = null, mirror = 1;
+let videoReady = false, videoAspect = 16 / 9, mix = 0, newFrame = true, lastVideoTime = -1;
+let failNote = 'Camera Unavailable', mediaUrl = null;
 const hasRVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
+const statusEl = document.getElementById('status');
+const say = msg => { statusEl.textContent = msg; };
 
 async function startCamera() {
   if (camState !== 'idle') return;
@@ -900,24 +959,104 @@ async function startCamera() {
       video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } },
       audio: false,
     });
+    if (camState !== 'starting') { stream.getTracks().forEach(t => t.stop()); return; }
+    video.removeAttribute('src');
     video.srcObject = stream;
+    video.muted = true;
     await video.play();
-    camState = 'live';
+    camState = 'live'; source = 'camera'; mirror = 1;
     if (hasRVFC) {
       const onFrame = () => { newFrame = true; video.requestVideoFrameCallback(onFrame); };
       video.requestVideoFrameCallback(onFrame);
     }
-  } catch (err) {
-    camState = 'denied';
-    titleSub = 'camera unavailable';
     drawTitle();
+    say('Camera on.');
+  } catch (err) {
+    if (camState !== 'starting') return;
+    camState = 'failed';
+    failNote = 'Camera Unavailable';
+    drawTitle();
+    say('Camera unavailable. Choose try camera again, or use a photo or video.');
   }
 }
 
+function retryCamera() {
+  if (camState !== 'failed') return;
+  camState = 'idle';
+  startCamera();
+}
+
+const mediaInput = document.getElementById('media');
+function chooseMedia() {
+  if (camState !== 'failed') return;
+  mediaInput.value = '';
+  mediaInput.click();
+}
+mediaInput.addEventListener('change', () => {
+  const file = mediaInput.files && mediaInput.files[0];
+  if (file) useMedia(file);
+});
+
+const loadImage = url => new Promise((ok, fail) => {
+  const img = new Image();
+  img.onload = () => ok(img);
+  img.onerror = fail;
+  img.src = url;
+});
+
+// a photo goes up once, through a canvas (keeps its EXIF rotation, caps the size at 2048 px)
+function paintImage(img) {
+  const s = Math.min(1, 2048 / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(img.naturalWidth * s));
+  c.height = Math.max(1, Math.round(img.naturalHeight * s));
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  gl.bindTexture(gl.TEXTURE_2D, videoTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, c);
+  videoAspect = c.width / c.height;
+  videoReady = true;
+}
+
+async function useMedia(file) {
+  const url = URL.createObjectURL(file);
+  const isVideo = file.type.startsWith('video/') || /\.(mov|mp4|m4v|webm|ogv)$/i.test(file.name);
+  try {
+    if (isVideo) {
+      video.srcObject = null;
+      video.src = url;
+      video.loop = true; video.muted = true; video.playsInline = true;
+      await video.play();
+      source = 'video'; lastVideoTime = -1;
+      if (mediaUrl) URL.revokeObjectURL(mediaUrl);
+      mediaUrl = url;
+    } else {
+      paintImage(await loadImage(url));
+      URL.revokeObjectURL(url);
+      source = 'image';
+    }
+    camState = 'media'; mirror = 0;
+    drawTitle();
+    say(isVideo ? 'Video on the curtain.' : 'Photo on the curtain.');
+  } catch (err) {
+    URL.revokeObjectURL(url);
+    failNote = "Couldn't Open That File";
+    drawTitle();
+    say("Couldn't open that file. Try another photo or video.");
+  }
+}
+
+actionBtns[0].addEventListener('click', retryCamera);
+actionBtns[1].addEventListener('click', chooseMedia);
+
 function uploadVideo() {
-  if (camState !== 'live' || video.readyState < 2 || !video.videoWidth) return;
-  if (hasRVFC && !newFrame && videoReady) return;
-  newFrame = false;
+  if ((source !== 'camera' && source !== 'video') || video.readyState < 2 || !video.videoWidth) return;
+  if (source === 'camera') {
+    if (hasRVFC && !newFrame && videoReady) return;
+    newFrame = false;
+  } else {
+    if (video.currentTime === lastVideoTime && videoReady) return;   // a file: only when the frame moves on
+    lastVideoTime = video.currentTime;
+  }
   gl.bindTexture(gl.TEXTURE_2D, videoTex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
   videoAspect = video.videoWidth / video.videoHeight;
@@ -1036,6 +1175,7 @@ function draw(now) {
   gl.uniform1f(cp.u.uCamZ, camD);
   gl.uniform1f(cp.u.uMix, mix);
   gl.uniform1f(cp.u.uVideoAspect, videoAspect);
+  gl.uniform1f(cp.u.uMirror, mirror);
   gl.uniform1f(cp.u.uScreenAspect, buildAspect);
   gl.uniform1f(cp.u.uSheer, CFG.sheer);
   gl.uniform1f(cp.u.uLight, CFG.fabricLight);
@@ -1098,7 +1238,8 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(() => {
     resizeCanvas();
     const aspect = innerWidth / innerHeight;
-    if (Math.abs(aspect - buildAspect) / buildAspect > 0.05) { drawTitle(); buildCloth(); }
+    if (Math.abs(aspect - buildAspect) / buildAspect > 0.05) buildCloth();
+    drawTitle();
   }, 150);
 });
 
