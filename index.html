@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#286d8c">
-<title>veilCam</title>
+<title>theVeil</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..600&display=swap">
@@ -34,7 +34,7 @@
 </style>
 </head>
 <body>
-<canvas id="gl" tabindex="0" aria-label="前鏡頭影像印在垂掛的紗布上。手指或滑鼠的位置會像一陣風，從布的後面往前吹。"></canvas>
+<canvas id="gl" tabindex="0" aria-label="前鏡頭影像印在垂掛的紗布上。滑鼠或手指停在哪裡，風就從那裡的布後面往前吹，停得越久風越強。"></canvas>
 <video id="cam" playsinline muted autoplay></video>
 <p id="fallback" hidden>這個瀏覽器無法使用 WebGL，所以紗布無法顯示。</p>
 
@@ -43,32 +43,54 @@
 'use strict';
 
 /* ------------------------------------------------------------------
-   veilCam — front camera printed on a sheer curtain.
-   Cloth: Verlet particles + distance constraints (structural / shear / bend).
-   Wind: comes from behind the curtain (+z, toward the viewer) at the pointer.
+   theVeil — front camera printed on a sheer, pleated curtain.
+   Cloth: Verlet particles + distance constraints (structural / shear / bend),
+          rest lengths taken from the pleated starting shape.
+   Wind:  blows from behind the curtain (+z, toward the viewer) wherever the
+          pointer rests; the longer it rests, the stronger and wider the wind.
+   Time:  the simulation runs in slow motion and is interpolated for display.
    ------------------------------------------------------------------ */
 
-const TITLE = 'veilCam';
+const TITLE = 'theVeil';
 
 const CFG = {
-  particlesTouch: 2300,  // cloth resolution on phones
-  particlesDesk: 3400,   // cloth resolution on desktop
-  sheer: 0.45,           // fabric opacity seen face-on (≈55% transparent)
+  // fabric
+  particlesTouch: 2800,  // cloth resolution on phones
+  particlesDesk: 5200,   // cloth resolution on desktop
+  sheer: 0.40,           // opacity seen face-on; folds turned away look denser (≈55% see-through overall)
+  pleatWidth: 0.26,      // one pleat, in units of half the screen height
+  pleatDepth: 0.34,      // pleat amplitude ÷ pleat width (the previous version was ≈0.07, so ≈5× deeper)
+  pleatJitter: 0.35,     // irregularity of the pleats (0 = perfect sine)
+  bend: 0.12,            // low = soft, fine wrinkles; high = stiffer, rounder folds
+  shear: 0.5,
+  iterations: 6,         // constraint passes per step (higher = less stretchy)
+
+  // air
   gravity: 4.2,
   air: 7.0,              // drag along the fabric normal: light, floaty gauze
   airIso: 0.5,           // small drag in every direction
-  damping: 0.008,        // velocity lost per sub-step
-  iterations: 6,         // constraint passes per sub-step (higher = less stretchy)
-  shear: 0.5,
-  bend: 0.12,            // low = soft, fine wrinkles; high = stiffer, rounder folds
-  gather: 1.05,          // fabric is 5% wider than the rod → soft hanging pleats (1 = flat)
-  pleatCells: 8,         // pleat width, in cloth cells
-  flutter: 0.32,         // unevenness inside the gust → finer creases
-  windMax: 1.5,          // gust speed at the pointer (world units / s)
-  ambient: 0.09,         // faint breeze that keeps the curtain breathing
-  wallZ: -0.2,           // window pane behind the curtain
-  sub: 1 / 120,          // physics time step
-  fov: 35,
+  damping: 0.010,        // velocity lost per step
+  ambient: 0.08,         // faint breeze that keeps the curtain breathing
+
+  // wind from the pointer
+  windMax: 2.3,          // wind speed after a long rest (world units / sim s)
+  windReach: 2.4,        // the gust fades out this far in front of the window
+  lift: 0.22,            // wind also rises a little, so the curtain floats up
+  baseWind: 0.12,        // a light breath as soon as the pointer is on the curtain
+  buildTime: 2.6,        // seconds of resting to reach ~63% strength (≈95% at 3×)
+  stillPx: 26,           // pointer counts as resting while it stays inside this radius
+  moveDecay: 0.9,        // how fast the built-up wind weakens while the pointer travels
+  releaseDecay: 0.42,    // how fast it dies away after the pointer leaves
+  follow: 1.8,           // how quickly the gust drifts to a new pointer position
+  sigmaMin: 0.22,        // gust radius when weak …
+  sigmaMax: 1.45,        // … and when strong (covers the whole curtain)
+  flutter: 0.38,         // slow travelling unevenness inside the gust
+
+  // time & view
+  timeScale: 0.45,       // slow motion: 1 = real time
+  sub: 1 / 120,          // physics step, in simulated seconds
+  fov: 14,               // narrow lens: the curtain reads flat, lifting reads as lifting
+  wallZ: -0.25,          // window pane behind the curtain
   blendMinutes: 40,      // sky crossfade length around each time boundary
   weavePx: 3.0,          // spacing of the woven threads, in CSS px
   hemPx: 7,              // folded hem at the bottom edge, in CSS px
@@ -123,11 +145,12 @@ function skyAt(hr) {
 const canvas = document.getElementById('gl');
 const video = document.getElementById('cam');
 const gl = canvas.getContext('webgl', {
-  alpha: false, antialias: true, premultipliedAlpha: false,
+  alpha: false, antialias: true, depth: true, premultipliedAlpha: false,
   preserveDrawingBuffer: false, powerPreference: 'high-performance',
 });
 if (!gl) { document.getElementById('fallback').hidden = false; return; }
 const derivs = gl.getExtension('OES_standard_derivatives');
+const uintIdx = gl.getExtension('OES_element_index_uint');
 
 function compile(type, src) {
   const s = gl.createShader(type);
@@ -226,21 +249,21 @@ void main() {
 
   vec3 print = mix(title, cam, uMix);
 
-  // soft light from the upper left, wrapped so folds stay gentle
-  vec3 L = normalize(vec3(-0.35, 0.55, 0.8));
+  // raking light from the upper left, so the pleats read as relief
+  vec3 L = normalize(vec3(-0.6, 0.42, 0.68));
   float lit = dot(n, L);
-  float wrap = clamp((lit + 0.35) / 1.35, 0.0, 1.0);
-  float shade = 0.42 + 0.66 * wrap;
+  float wrap = clamp((lit + 0.3) / 1.3, 0.0, 1.0);
+  float shade = 0.48 + 0.62 * wrap;
   float rim = pow(1.0 - ndv, 2.5);
-  vec3 col = print * shade + rim * 0.12;
-  // a soft glint along the ridges that catch the light
+  vec3 col = print * shade + rim * 0.08;
+  // a faint matte sheen along the ridges that catch the light
   vec3 hlf = normalize(L + v);
-  col += pow(max(dot(n, hlf), 0.0), 24.0) * 0.10;
+  col += pow(max(dot(n, hlf), 0.0), 16.0) * 0.05;
 
-  // sheer fabric looks denser where it turns away from you
-  float a = 1.0 - pow(1.0 - uSheer, 1.0 / max(ndv, 0.18));
+  // sheer fabric looks denser where it turns away from you, but stays see-through
+  float a = 1.0 - pow(1.0 - uSheer, mix(1.0, 1.0 / max(ndv, 0.25), 0.55));
   // folds in shadow hold back a little more light from behind
-  a += (1.0 - a) * (1.0 - wrap) * 0.22;
+  a += (1.0 - a) * (1.0 - wrap) * 0.10;
 
 #ifdef WEAVE
   vec2 g = vUv * uWeave;
@@ -248,7 +271,8 @@ void main() {
   // threads drift a little, like a loose hand weave
   g += 0.18 * vec2(sin(g.y * 0.21 + g.x * 0.013), sin(g.x * 0.17 - g.y * 0.011));
   vec2 th = 0.5 + 0.5 * cos(6.2831853 * g);
-  vec2 f = 1.0 - smoothstep(0.2, 0.45, fw);
+  vec2 f = 1.0 - smoothstep(0.15, 0.4, fw);
+  f *= smoothstep(0.35, 0.7, ndv);   // threads blur out where the fabric turns edge-on
   float w = max(th.x * f.x, th.y * f.y);
   a *= 1.0 + 0.11 * (w - 0.5) * max(f.x, f.y);
 #endif
@@ -259,6 +283,15 @@ void main() {
 
   gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
 }
+`);
+
+/* Depth only: finds the front-most layer of fabric, so folds that overlap draw in order. */
+const depthProg = program(`
+attribute vec3 aPos;
+uniform mat4 uMVP;
+void main() { gl_Position = uMVP * vec4(aPos, 1.0); }
+`, PRECISION + `
+void main() { gl_FragColor = vec4(0.0); }
 `);
 
 const bgBuf = gl.createBuffer();
@@ -310,8 +343,8 @@ function drawTitle() {
 }
 
 /* ---------------- Cloth ---------------- */
-let cols, rows, N, pos, prev, nrm, inv, cA, cB, cR, cS, cCount, idxCount;
-let clothMin, clothSize, buildAspect, hemV, weave, sigma;
+let cols, rows, N, pos, prev, rend, nrm, nrmR, inv, tether, cA, cB, cR, cS, cCount, idxCount, idxType;
+let clothMin, clothSize, buildAspect, hemV, weave, zMax;
 
 function buildCloth() {
   const aspect = innerWidth / innerHeight;
@@ -320,20 +353,29 @@ function buildCloth() {
   const top = 1.03, bottom = -1.07;                      // rod just above, hem just below
   const cw = right - left, ch = top - bottom;
   const target = coarse ? CFG.particlesTouch : CFG.particlesDesk;
+  const lambda = CFG.pleatWidth;
+
+  // at least 9 points across every pleat; the rest of the budget goes to the height
   const sp = Math.sqrt(cw * ch / target);
-  cols = Math.max(12, Math.round(cw / sp) + 1);
-  rows = Math.max(12, Math.round(ch / sp) + 1);
+  const dxWanted = Math.min(sp, lambda / 9);
+  cols = Math.max(12, Math.round(cw / dxWanted) + 1);
+  rows = Math.max(12, Math.min(Math.round(target / cols), Math.round(ch / (dxWanted * 0.8)) + 1));
   N = cols * rows;
   const dx = cw / (cols - 1), dy = ch / (rows - 1);
 
-  // pleats from the gathered heading: a sine whose arc length = gather × span
-  const lambda = dx * CFG.pleatCells;
-  const amp = CFG.gather > 1 ? lambda * Math.sqrt(CFG.gather - 1) / Math.PI : 0;
-  const k2 = 2 * Math.PI / lambda;
+  // pleats: a slightly irregular wave hung from the rod
+  const k = 2 * Math.PI / lambda;
+  const amp = CFG.pleatDepth * lambda;
+  const j = CFG.pleatJitter;
+  const pleatZ = x =>
+    amp * (1 - 0.25 * j + 0.25 * j * Math.sin(0.29 * k * x + 1.3)) *
+    Math.sin(k * x + j * 1.4 * Math.sin(0.41 * k * x + 0.7));
 
   pos = new Float32Array(N * 3);
   prev = new Float32Array(N * 3);
+  rend = new Float32Array(N * 3);
   nrm = new Float32Array(N * 3);
+  nrmR = new Float32Array(N * 3);
   inv = new Float32Array(N);
   const uv = new Float32Array(N * 2);
 
@@ -341,7 +383,7 @@ function buildCloth() {
     for (let c = 0; c < cols; c++) {
       const i = r * cols + c;
       const x = left + c * dx, y = top - r * dy;
-      const z = amp * Math.sin(k2 * x) + (Math.random() - 0.5) * 0.002;
+      const z = pleatZ(x) + (Math.random() - 0.5) * 0.002;
       pos[i * 3] = prev[i * 3] = x;
       pos[i * 3 + 1] = prev[i * 3 + 1] = y;
       pos[i * 3 + 2] = prev[i * 3 + 2] = z;
@@ -351,12 +393,12 @@ function buildCloth() {
     }
   }
 
-  // rest lengths use the real fabric width (span × gather), so the cloth keeps its pleats
-  const hx = dx * Math.max(1, CFG.gather);
+  // rest lengths come from the pleated shape, so the extra fabric stays in the folds
   const A = [], B = [], R = [], S = [];
   const add = (a, b, stiff) => {
-    const ca = a % cols, ra = (a / cols) | 0, cb = b % cols, rb = (b / cols) | 0;
-    A.push(a); B.push(b); R.push(Math.hypot((cb - ca) * hx, (rb - ra) * dy)); S.push(stiff);
+    const a3 = a * 3, b3 = b * 3;
+    A.push(a); B.push(b); S.push(stiff);
+    R.push(Math.hypot(pos[b3] - pos[a3], pos[b3 + 1] - pos[a3 + 1], pos[b3 + 2] - pos[a3 + 2]));
   };
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
     const i = r * cols + c;
@@ -377,33 +419,47 @@ function buildCloth() {
   cR = Float32Array.from(R); cS = Float32Array.from(S);
   cCount = cA.length;
 
-  const idx = new Uint16Array((cols - 1) * (rows - 1) * 6);
-  let k = 0;
+  // tethers: no point may drift farther from its hook than the fabric between them allows
+  tether = new Float32Array(N);
+  for (let c = 0; c < cols; c++) {
+    let len = 0;
+    for (let r = 1; r < rows; r++) {
+      const a = ((r - 1) * cols + c) * 3, b = (r * cols + c) * 3;
+      len += Math.hypot(pos[b] - pos[a], pos[b + 1] - pos[a + 1], pos[b + 2] - pos[a + 2]);
+      tether[r * cols + c] = len * 1.01;
+    }
+  }
+
+  const big = N > 65535 && uintIdx;
+  const idx = big ? new Uint32Array((cols - 1) * (rows - 1) * 6) : new Uint16Array((cols - 1) * (rows - 1) * 6);
+  idxType = big ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT;
+  let n = 0;
   for (let r = 0; r < rows - 1; r++) for (let c = 0; c < cols - 1; c++) {
     const i = r * cols + c;
-    idx[k++] = i; idx[k++] = i + cols; idx[k++] = i + 1;
-    idx[k++] = i + 1; idx[k++] = i + cols; idx[k++] = i + cols + 1;
+    idx[n++] = i; idx[n++] = i + cols; idx[n++] = i + 1;
+    idx[n++] = i + 1; idx[n++] = i + cols; idx[n++] = i + cols + 1;
   }
-  idxCount = k;
+  idxCount = n;
 
   clothMin = [left, bottom];
   clothSize = [cw, ch];
   const pxPerWorld = innerHeight / 2;
   weave = [cw * pxPerWorld / CFG.weavePx, ch * pxPerWorld / CFG.weavePx];
   hemV = CFG.hemPx / (ch * pxPerWorld);
-  sigma = 0.22 + 0.08 * Math.min(aspect, 1);
+  zMax = Math.min(camD - 1.1, CFG.windReach + 0.4);
 
-  computeNormals();
+  computeNormals(pos, nrm);
   gl.bindBuffer(gl.ARRAY_BUFFER, posBuf); gl.bufferData(gl.ARRAY_BUFFER, pos, gl.DYNAMIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER, nrmBuf); gl.bufferData(gl.ARRAY_BUFFER, nrm, gl.DYNAMIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf); gl.bufferData(gl.ARRAY_BUFFER, uv, gl.STATIC_DRAW);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
 
-  for (let s = 0; s < 90; s++) { step(CFG.sub, simT); simT += CFG.sub; }  // let it settle
+  for (let s = 0; s < 120; s++) { step(CFG.sub, simT); simT += CFG.sub; }  // let it settle
+  acc = 0;
 }
 
-function computeNormals() {
-  const p = pos, out = nrm, C = cols, Rr = rows;
+function computeNormals(p, out) {
+  const C = cols, Rr = rows;
   for (let r = 0; r < Rr; r++) {
     const up = r > 0 ? -C : 0, dn = r < Rr - 1 ? C : 0;
     for (let c = 0; c < C; c++) {
@@ -412,58 +468,73 @@ function computeNormals() {
       const u = (i + up) * 3, d = (i + dn) * 3;
       const ax = p[rt] - p[l], ay = p[rt + 1] - p[l + 1], az = p[rt + 2] - p[l + 2];
       const bx = p[u] - p[d], by = p[u + 1] - p[d + 1], bz = p[u + 2] - p[d + 2];
-      let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+      const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
       const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
       out[i * 3] = nx / len; out[i * 3 + 1] = ny / len; out[i * 3 + 2] = nz / len;
     }
   }
 }
 
-/* ---------------- Wind ---------------- */
+/* ---------------- Wind: rest the pointer, and the wind gathers there ---------------- */
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const wind = { x: 0, y: 0, tx: 0, ty: 0, s: 0, speed: 0, active: false, down: false, lt: 0, W: 0 };
+const wind = {
+  x: 0, y: 0, tx: 0, ty: 0,      // gust centre (world) and where the pointer is
+  ax: -1e4, ay: -1e4,            // anchor of the current rest, in CSS px
+  active: false, down: false,
+  lastMove: -1e9, charge: 0,     // seconds of rest, decaying when the pointer travels or leaves
+  s: 0, W: 0, sigma: CFG.sigmaMin,
+};
 
 function toWorld(cx, cy) {
   const aspect = innerWidth / innerHeight;
   return [((cx / innerWidth) * 2 - 1) * aspect, 1 - (cy / innerHeight) * 2];
 }
 
-function setPointer(e, jump) {
-  const [x, y] = toWorld(e.clientX, e.clientY);
+function pointerAt(e, fresh) {
   const now = performance.now();
-  if (!jump && wind.lt) {
-    const dt = Math.max((now - wind.lt) / 1000, 1 / 240);
-    const sp = Math.hypot(x - wind.tx, y - wind.ty) / dt;
-    wind.speed = Math.max(wind.speed, Math.min(sp, 6));
+  if (fresh || Math.hypot(e.clientX - wind.ax, e.clientY - wind.ay) > CFG.stillPx) {
+    if (!fresh) wind.lastMove = now;
+    wind.ax = e.clientX; wind.ay = e.clientY;
   }
-  wind.tx = x; wind.ty = y; wind.lt = now;
-  if (wind.s < 0.03) { wind.x = x; wind.y = y; }
+  [wind.tx, wind.ty] = toWorld(e.clientX, e.clientY);
+  if (wind.s < 0.03) { wind.x = wind.tx; wind.y = wind.ty; }  // calm: the next gust starts right here
 }
 
-function updateWind(dt, t) {
-  wind.x += (wind.tx - wind.x) * (1 - Math.exp(-dt * 5));
-  wind.y += (wind.ty - wind.y) * (1 - Math.exp(-dt * 5));
-  const target = wind.active ? 0.5 + Math.min(wind.speed * 0.22, 0.6) : 0;
-  const rate = target > wind.s ? 2.2 : 0.9;      // rises gently, fades slower
+function updateWind(dt) {
+  const now = performance.now();
+  const resting = wind.active && now - wind.lastMove > 160;
+  if (resting) wind.charge += dt;
+  else if (wind.active) wind.charge *= Math.exp(-dt * CFG.moveDecay);
+  else wind.charge *= Math.exp(-dt * CFG.releaseDecay);
+
+  const built = 1 - Math.exp(-wind.charge / CFG.buildTime);
+  const target = wind.active ? Math.max(CFG.baseWind, built) : built;
+  const rate = target > wind.s ? 1.6 : 0.9;
   wind.s += (target - wind.s) * (1 - Math.exp(-dt * rate));
-  wind.speed *= Math.exp(-dt * 3);
-  const gust = 0.82 + 0.12 * Math.sin(t * 1.7) + 0.06 * Math.sin(t * 4.3 + 1.0);
-  wind.W = wind.s * CFG.windMax * gust;
+
+  const f = 1 - Math.exp(-dt * CFG.follow);
+  wind.x += (wind.tx - wind.x) * f;
+  wind.y += (wind.ty - wind.y) * f;
+
+  const e = wind.s * wind.s * (3 - 2 * wind.s);
+  wind.W = CFG.windMax * (0.25 * wind.s + 0.75 * e);
+  wind.sigma = CFG.sigmaMin + (CFG.sigmaMax - CFG.sigmaMin) * Math.pow(e, 1.3);
 }
 
 canvas.addEventListener('pointerdown', e => {
   wind.down = true; wind.active = true;
-  setPointer(e, true);
+  pointerAt(e, true);
+  wind.lastMove = -1e9;            // a finger set down is already resting
   try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
   startCamera();
 });
 canvas.addEventListener('pointermove', e => {
   if (e.pointerType === 'mouse') {
-    const jump = !wind.active;
+    const fresh = !wind.active;
     wind.active = true;
-    setPointer(e, jump);
+    pointerAt(e, fresh);
   } else if (wind.down) {
-    setPointer(e, false);
+    pointerAt(e, false);
   }
 });
 const endPointer = e => {
@@ -473,24 +544,29 @@ const endPointer = e => {
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') wind.active = false; });
+document.addEventListener('mouseleave', () => { wind.active = false; });
 window.addEventListener('blur', () => { wind.active = false; wind.down = false; });
 canvas.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startCamera(); } });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 /* ---------------- Physics ---------------- */
-let simT = 0;
-let camD = 1 / Math.tan(CFG.fov * Math.PI / 360);
+let simT = 0, acc = 0;
+const camD = 1 / Math.tan(CFG.fov * Math.PI / 360);
 
 function step(dt, t) {
-  computeNormals();
+  computeNormals(pos, nrm);
   const p = pos, q = prev, nr = nrm, iv = inv, n = N;
   const dt2 = dt * dt, idt = 1 / dt;
   const g = CFG.gravity, air = CFG.air, iso = CFG.airIso, keep = 1 - CFG.damping;
-  const W = wind.W, wx0 = wind.x, wy0 = wind.y, inv2s2 = 1 / (2 * sigma * sigma);
-  const fl = CFG.flutter;
+  const lift = CFG.lift, fl = CFG.flutter;
+  const windNear = CFG.windReach * 0.35, windSpan = CFG.windReach * 0.65;
+
+  // the gust breathes slowly; strong wind is never perfectly steady
+  const W = wind.W * (0.86 + 0.09 * Math.sin(t * 0.9) + 0.05 * Math.sin(t * 2.3 + 1.0));
+  const wx0 = wind.x, wy0 = wind.y, inv2s2 = 1 / (2 * wind.sigma * wind.sigma);
   const amb = reduceMotion ? 0 : CFG.ambient * (0.55 + 0.45 * Math.sin(t * 0.13));
-  const ta = t * 0.53, tb = t * 0.91, f1 = t * 3.1, f2 = t * 2.3;
-  const zMin = CFG.wallZ, zMax = camD * 0.55;
+  const ta = t * 0.53, tb = t * 0.91;
+  const zMin = CFG.wallZ, zTop = zMax;
 
   for (let i = 0; i < n; i++) {
     if (iv[i] === 0) continue;
@@ -504,13 +580,19 @@ function step(dt, t) {
       const dx = x - wx0, dy = y - wy0;
       const fall = Math.exp(-(dx * dx + dy * dy) * inv2s2);
       if (fall > 0.002) {
-        const turb = 0.65 * Math.sin(x * 7.0 + f1) * Math.sin(y * 6.0 - f2)
-                   + 0.35 * Math.sin(x * 15.0 - y * 4.0 + f2 * 1.7);
-        wz += W * fall * (1 + fl * turb);
+        // slow waves rolling up through the gust
+        const turb = 0.55 * Math.sin(2.3 * y - 1.6 * t + 1.7 * x)
+                   + 0.30 * Math.sin(3.7 * x + 1.1 * t) * Math.sin(2.9 * y - 0.7 * t)
+                   + 0.15 * Math.sin(6.0 * x - 4.0 * y + 2.2 * t);
+        // the gust loses strength as it travels away from the window
+        const zf = z < windNear ? 0 : Math.min((z - windNear) / windSpan, 1);
+        const reach = 1 - 0.9 * zf * zf * (3 - 2 * zf);
+        wz += W * fall * reach * (1 + fl * turb);
       }
     }
+    const wy = wz > 0 ? wz * lift : 0;
 
-    const rvx = -vx * idt, rvy = -vy * idt, rvz = wz - vz * idt;
+    const rvx = -vx * idt, rvy = wy - vy * idt, rvz = wz - vz * idt;
     const nx = nr[i3], ny = nr[i3 + 1], nz = nr[i3 + 2];
     const dn = (nx * rvx + ny * rvy + nz * rvz) * air;
     const ax = dn * nx + iso * rvx;
@@ -521,7 +603,7 @@ function step(dt, t) {
     p[i3] = x + vx + ax * dt2;
     p[i3 + 1] = y + vy + ay * dt2;
     let nzp = z + vz + az * dt2;
-    if (nzp < zMin) nzp = zMin; else if (nzp > zMax) nzp = zMax;
+    if (nzp < zMin) nzp = zMin; else if (nzp > zTop) nzp = zTop;
     p[i3 + 2] = nzp;
   }
 
@@ -548,7 +630,29 @@ function solve() {
       p[a3] += dx * ca; p[a3 + 1] += dy * ca; p[a3 + 2] += dz * ca;
       p[b3] -= dx * cb; p[b3 + 1] -= dy * cb; p[b3 + 2] -= dz * cb;
     }
+    if (it & 1) applyTethers();
   }
+  applyTethers();
+}
+
+function applyTethers() {
+  const p = pos, T = tether, C = cols;
+  for (let i = C; i < N; i++) {
+    const h = (i % C) * 3, i3 = i * 3;
+    const dx = p[i3] - p[h], dy = p[i3 + 1] - p[h + 1], dz = p[i3 + 2] - p[h + 2];
+    const d2 = dx * dx + dy * dy + dz * dz, L = T[i];
+    if (d2 > L * L) {
+      const s = L / Math.sqrt(d2);
+      p[i3] = p[h] + dx * s; p[i3 + 1] = p[h + 1] + dy * s; p[i3 + 2] = p[h + 2] + dz * s;
+    }
+  }
+}
+
+/* positions shown on screen: between the last two physics steps */
+function interpolate(alpha) {
+  const p = pos, q = prev, o = rend, n3 = N * 3, b = 1 - alpha;
+  for (let i = 0; i < n3; i++) o[i] = q[i] * b + p[i] * alpha;
+  computeNormals(o, nrmR);
 }
 
 /* ---------------- Camera ---------------- */
@@ -606,13 +710,13 @@ function resizeCanvas() {
   canvas.width = Math.round(innerWidth * dpr);
   canvas.height = Math.round(innerHeight * dpr);
   const aspect = innerWidth / innerHeight;
-  const f = 1 / Math.tan(CFG.fov * Math.PI / 360), near = 0.1, far = 20, nf = 1 / (near - far);
+  const f = camD, near = 0.1, far = 30, nf = 1 / (near - far);
   const P = [f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0];
   const V = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, -camD, 1];
   mvp = mul4(P, V);
 }
 
-let skyCache = { top: SKY[4].topC, bot: SKY[4].botC }, skyStamp = -1, themeStamp = -1;
+let skyCache = { top: SKY[4].topC, bot: SKY[4].botC }, skyStamp = -1e9, themeStamp = -1e9;
 const themeMeta = document.querySelector('meta[name="theme-color"]');
 
 function draw(now) {
@@ -629,7 +733,11 @@ function draw(now) {
     }
   }
 
+  // 1. sky
   gl.disable(gl.BLEND);
+  gl.disable(gl.DEPTH_TEST);
+  gl.depthMask(true);
+  gl.clear(gl.DEPTH_BUFFER_BIT);
   gl.useProgram(bgProg.p);
   gl.bindBuffer(gl.ARRAY_BUFFER, bgBuf);
   gl.enableVertexAttribArray(bgProg.a.aPos);
@@ -639,18 +747,39 @@ function draw(now) {
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   gl.disableVertexAttribArray(bgProg.a.aPos);
 
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, rend);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
+
+  // 2. depth of the front-most fabric (pushed back a hair so the front layer passes again)
+  gl.enable(gl.DEPTH_TEST);
+  gl.depthFunc(gl.LESS);
+  gl.colorMask(false, false, false, false);
+  gl.enable(gl.POLYGON_OFFSET_FILL);
+  gl.polygonOffset(1.0, 2.0);
+  gl.useProgram(depthProg.p);
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.enableVertexAttribArray(depthProg.a.aPos);
+  gl.vertexAttribPointer(depthProg.a.aPos, 3, gl.FLOAT, false, 0, 0);
+  gl.uniformMatrix4fv(depthProg.u.uMVP, false, mvp);
+  gl.drawElements(gl.TRIANGLES, idxCount, idxType, 0);
+  gl.disableVertexAttribArray(depthProg.a.aPos);
+  gl.disable(gl.POLYGON_OFFSET_FILL);
+  gl.colorMask(true, true, true, true);
+  gl.depthMask(false);
+
+  // 3. fabric: layers folded behind first, then the front layer over them
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   const cp = clothProg;
   gl.useProgram(cp.p);
 
   gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
-  gl.bufferSubData(gl.ARRAY_BUFFER, 0, pos);
   gl.enableVertexAttribArray(cp.a.aPos);
   gl.vertexAttribPointer(cp.a.aPos, 3, gl.FLOAT, false, 0, 0);
 
   gl.bindBuffer(gl.ARRAY_BUFFER, nrmBuf);
-  gl.bufferSubData(gl.ARRAY_BUFFER, 0, nrm);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, nrmR);
   gl.enableVertexAttribArray(cp.a.aNrm);
   gl.vertexAttribPointer(cp.a.aNrm, 3, gl.FLOAT, false, 0, 0);
 
@@ -674,12 +803,29 @@ function draw(now) {
   gl.uniform2f(cp.u.uViewHalf, buildAspect, 1);
   if (cp.u.uWeave) gl.uniform2fv(cp.u.uWeave, weave);
 
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
-  gl.drawElements(gl.TRIANGLES, idxCount, gl.UNSIGNED_SHORT, 0);
+  gl.depthFunc(gl.GREATER);
+  gl.drawElements(gl.TRIANGLES, idxCount, idxType, 0);
+  gl.depthFunc(gl.LEQUAL);
+  gl.drawElements(gl.TRIANGLES, idxCount, idxType, 0);
+
+  gl.disableVertexAttribArray(cp.a.aPos);
+  gl.disableVertexAttribArray(cp.a.aNrm);
+  gl.disableVertexAttribArray(cp.a.aUv);
+  gl.depthMask(true);
+  gl.disable(gl.DEPTH_TEST);
 }
 
 /* ---------------- Loop ---------------- */
-let last = performance.now(), acc = 0, running = true;
+let last = performance.now(), running = true, frozen = false;
+
+function advance(dt) {
+  updateWind(dt);
+  acc += dt * CFG.timeScale;
+  let steps = 0;
+  while (acc >= CFG.sub && steps < 4) { step(CFG.sub, simT); simT += CFG.sub; acc -= CFG.sub; steps++; }
+  if (steps === 4 && acc >= CFG.sub) acc = 0;
+  interpolate(Math.min(acc / CFG.sub, 1));
+}
 
 function frame(now) {
   if (!running) return;
@@ -687,13 +833,7 @@ function frame(now) {
   last = now;
   if (dt > 0.1) dt = 0.1;
 
-  updateWind(dt, simT);
-
-  acc += dt;
-  let steps = 0;
-  while (acc >= CFG.sub && steps < 5) { step(CFG.sub, simT); simT += CFG.sub; acc -= CFG.sub; steps++; }
-  if (steps === 5) acc = 0;
-  computeNormals();
+  if (!frozen) advance(dt);
 
   uploadVideo();
   if (videoReady) mix += (1 - mix) * (1 - Math.exp(-dt * 1.2));
@@ -721,16 +861,32 @@ window.addEventListener('resize', () => {
 resizeCanvas();
 drawTitle();
 buildCloth();
+interpolate(0);
 if (document.fonts && document.fonts.load) {
   document.fonts.load(`600 64px Fraunces`).then(() => drawTitle()).catch(() => {});
 }
 requestAnimationFrame(frame);
 
-// handy for tuning in the console: veilCam.CFG.bend = 0.3, etc.
-window.veilCam = {
+// for tuning in the browser console, e.g. theVeil.CFG.windMax = 3
+window.theVeil = {
   CFG, wind,
+  advance,                                  // advance(realSeconds) without waiting for frames
+  freeze(v = true) { frozen = v; },         // stop the clock (for stills)
   bench(n = 120) { const t0 = performance.now(); for (let i = 0; i < n; i++) step(CFG.sub, simT); return (performance.now() - t0) / n; },
   info() { return { cols, rows, particles: N, constraints: cCount }; },
+  stats() {
+    let by = 0, bz = 0, maxZ = -9, stretch = 0;
+    const r0 = (rows - 1) * cols;
+    for (let c = 0; c < cols; c++) { const i = (r0 + c) * 3; by += pos[i + 1]; bz += pos[i + 2]; }
+    for (let i = 0; i < N; i++) maxZ = Math.max(maxZ, pos[i * 3 + 2]);
+    for (let k = 0; k < cCount; k++) {
+      if (cS[k] !== 1) continue;
+      const a = cA[k] * 3, b = cB[k] * 3;
+      const d = Math.hypot(pos[b] - pos[a], pos[b + 1] - pos[a + 1], pos[b + 2] - pos[a + 2]);
+      stretch = Math.max(stretch, d / cR[k]);
+    }
+    return { hemY: by / cols, hemZ: bz / cols, maxZ, stretch, s: wind.s, W: wind.W, sigma: wind.sigma };
+  },
 };
 })();
 </script>
