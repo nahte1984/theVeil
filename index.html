@@ -57,10 +57,9 @@
     position: fixed; z-index: 5;
     top: max(20px, env(safe-area-inset-top, 0px));
     right: max(20px, env(safe-area-inset-right, 0px));
-    width: 276px; max-height: calc(100% - 40px); overflow: auto;
+    width: 312px; max-height: calc(100% - 40px); overflow: hidden;
     box-sizing: border-box; padding: 16px 20px 14px;
     display: flex; flex-direction: column; gap: 10px;
-    scrollbar-width: thin;
     color: var(--fg);
     background: var(--glass);
     -webkit-backdrop-filter: blur(18px) saturate(140%);
@@ -86,7 +85,15 @@
     border: 1px solid var(--line); border-radius: 4px; text-align: center;
     font: 500 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--fg);
   }
-  #panel section { display: flex; flex-direction: column; gap: 8px; }
+  #panel .body {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    margin-right: -14px; padding-right: 14px;
+    display: flex; flex-direction: column; gap: 10px;
+    scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .25) transparent;
+  }
+  #panel .body::-webkit-scrollbar { width: 6px; }
+  #panel .body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .25); border-radius: 3px; }
+  #panel section { display: flex; flex-direction: column; gap: 12px; }
   #panel section + section { padding-top: 10px; border-top: 1px solid var(--line); }
   #panel h2 {
     margin: 0; color: var(--muted);
@@ -103,7 +110,12 @@
     grid-column: 1 / -1; display: flex; justify-content: space-between;
     margin-top: -2px; color: var(--muted); font-size: 11px; letter-spacing: .08em;
   }
-  #panel .note { grid-column: 1 / -1; margin-top: -2px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+  #panel .note { grid-column: 1 / -1; margin-top: 1px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+  #panel .note code {
+    font: 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace; color: var(--fg); opacity: .55;
+    margin-right: 6px;
+  }
+  #panel .row.rebuild label::after { content: "放開重建"; margin-left: 6px; font-size: 10px; color: var(--muted); letter-spacing: .06em; }
   #panel input[type="range"] {
     grid-column: 1 / -1; width: 100%; margin: 0; height: 16px;
     -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer;
@@ -164,58 +176,7 @@
     <span class="name">TongPoo</span>
     <span class="hint"><kbd>T</kbd>收起</span>
   </header>
-  <section aria-label="風">
-    <h2>風</h2>
-    <div class="row">
-      <label for="p-range">風的範圍</label><output id="o-range" for="p-range"></output>
-      <input id="p-range" type="range" min="0.2" max="2.5" step="0.01">
-    </div>
-    <div class="row">
-      <label for="p-wind">風的強度</label><output id="o-wind" for="p-wind"></output>
-      <input id="p-wind" type="range" min="0" max="5" step="0.05">
-    </div>
-  </section>
-  <section aria-label="布">
-    <h2>布</h2>
-    <div class="row">
-      <label for="p-bend">布的軟硬</label><output id="o-bend" for="p-bend"></output>
-      <input id="p-bend" type="range" min="0" max="1" step="0.001">
-      <div class="ends" aria-hidden="true"><span>軟</span><span>硬</span></div>
-    </div>
-    <div class="row">
-      <label for="p-light">布的亮部亮度</label><output id="o-light" for="p-light"></output>
-      <input id="p-light" type="range" min="50" max="160" step="1">
-    </div>
-    <div class="row">
-      <label for="p-dark">布的暗部的暗度</label><output id="o-dark" for="p-dark"></output>
-      <input id="p-dark" type="range" min="0" max="100" step="1">
-    </div>
-    <div class="row">
-      <label for="p-ptouch">手機的布料粒子數</label><output id="o-ptouch" for="p-ptouch"></output>
-      <input id="p-ptouch" type="range" min="800" max="5200" step="100">
-      <div class="note" id="n-ptouch"></div>
-    </div>
-  </section>
-  <section aria-label="相機畫面">
-    <h2>相機畫面</h2>
-    <div class="row">
-      <label for="p-sheer">相機畫面的透明度</label><output id="o-sheer" for="p-sheer"></output>
-      <input id="p-sheer" type="range" min="0" max="95" step="1">
-    </div>
-    <div class="row">
-      <label for="p-sat">相機畫面的彩度</label><output id="o-sat" for="p-sat"></output>
-      <input id="p-sat" type="range" min="0" max="200" step="1">
-      <div class="ends" aria-hidden="true"><span>黑白</span><span>濃烈</span></div>
-    </div>
-  </section>
-  <section aria-label="時間">
-    <h2>時間</h2>
-    <div class="row">
-      <label for="p-time">物理模擬的倍數</label><output id="o-time" for="p-time"></output>
-      <input id="p-time" type="range" min="0.1" max="3" step="0.05">
-      <div class="ends" aria-hidden="true"><span>慢動作</span><span>快轉</span></div>
-    </div>
-  </section>
+  <div class="body" id="controls"></div>
   <footer>
     <button id="p-reset" type="button">重設</button>
     <button id="p-copy" type="button">複製設定</button>
@@ -252,24 +213,24 @@ const CFG = {
 
   // air
   gravity: 4.2,
-  air: 7.0,              // drag along the fabric normal: light, floaty gauze
+  air: 7,              // drag along the fabric normal: light, floaty gauze
   airIso: 0.5,           // small drag in every direction
-  damping: 0.010,        // velocity lost per step
+  damping: 0.01,        // velocity lost per step
   ambient: 0.08,         // faint breeze that keeps the curtain breathing
 
   // wind from the pointer
-  windMax: 3.5,          // wind speed after a long rest (world units / sim s)
+  windMax: 2.5,          // wind speed after a long rest (world units / sim s)
   windReach: 2.4,        // the gust fades out this far in front of the window
   lift: 0.22,            // wind also rises a little, so the curtain floats up
-  baseWind: 0.12,        // a light breath as soon as the pointer is on the curtain
-  buildTime: 2.6,        // seconds of resting to reach ~63% strength (≈95% at 3×)
-  stillPx: 26,           // pointer counts as resting while it stays inside this radius
-  moveDecay: 0.9,        // how fast the built-up wind weakens while the pointer travels
-  releaseDecay: 0.42,    // how fast it dies away after the pointer leaves
+  baseWind: 0.6,        // a light breath as soon as the pointer is on the curtain
+  buildTime: 0.5,        // seconds of resting to reach ~63% strength (≈95% at 3×)
+  stillPx: 25,           // pointer counts as resting while it stays inside this radius
+  moveDecay: 0,        // how fast the built-up wind weakens while the pointer travels
+  releaseDecay: 1.5,    // how fast it dies away after the pointer leaves
   follow: 1.8,           // how quickly the gust drifts to a new pointer position
   sigmaMin: 0.106,       // gust radius when weak …
   sigmaMax: 0.7,         // … and when strong
-  flutter: 0.38,         // slow travelling unevenness inside the gust
+  flutter: 0.25,         // slow travelling unevenness inside the gust
 
   // time & view
   timeScale: 2,          // 1 = real time, below 1 = slow motion
@@ -277,8 +238,8 @@ const CFG = {
   fov: 14,               // narrow lens: the curtain reads flat, lifting reads as lifting
   wallZ: -0.25,          // window pane behind the curtain
   blendMinutes: 40,      // sky crossfade length around each time boundary
-  weavePx: 3.0,          // spacing of the woven threads, in CSS px
-  hemPx: 7,              // folded hem at the bottom edge, in CSS px
+  weavePx: 3,          // spacing of the woven threads, in CSS px
+  hemPx: 15,              // folded hem at the bottom edge, in CSS px
 
   // look
   fabricLight: 0.8,      // brightness of the lit side of each fold
@@ -624,6 +585,17 @@ function placeActions() {
 let cols, rows, N, pos, prev, rend, nrm, nrmR, inv, tether, cA, cB, cR, cS, cCount, shearStart, bendStart, idxCount, idxType;
 let clothMin, clothSize, buildAspect, hemV, weave, zMax;
 
+let builtWith = null;   // the settings the current cloth was built from
+
+// weave spacing, hem width and how close the cloth may come, from CFG and the screen size
+function updateDerived() {
+  if (!clothSize) return;
+  const [cw, ch] = clothSize, pxPerWorld = innerHeight / 2;
+  weave = [cw * pxPerWorld / CFG.weavePx, ch * pxPerWorld / CFG.weavePx];
+  hemV = CFG.hemPx / (ch * pxPerWorld);
+  zMax = Math.min(camD - 1.1, CFG.windReach + 0.4);
+}
+
 // below bend 0.02 the diagonal links relax too, so the gauze can drape and crumple more freely
 const SOFT_EDGE = 0.02;
 function shearFor(bend) {
@@ -729,10 +701,8 @@ function buildCloth() {
 
   clothMin = [left, bottom];
   clothSize = [cw, ch];
-  const pxPerWorld = innerHeight / 2;
-  weave = [cw * pxPerWorld / CFG.weavePx, ch * pxPerWorld / CFG.weavePx];
-  hemV = CFG.hemPx / (ch * pxPerWorld);
-  zMax = Math.min(camD - 1.1, CFG.windReach + 0.4);
+  updateDerived();
+  builtWith = { target, pleatWidth: CFG.pleatWidth, pleatDepth: CFG.pleatDepth, pleatJitter: CFG.pleatJitter };
 
   computeNormals(pos, nrm);
   gl.bindBuffer(gl.ARRAY_BUFFER, posBuf); gl.bufferData(gl.ARRAY_BUFFER, pos, gl.DYNAMIC_DRAW);
@@ -837,7 +807,7 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 /* ---------------- Physics ---------------- */
 let simT = 0, acc = 0;
-const camD = 1 / Math.tan(CFG.fov * Math.PI / 360);
+let camD = 1 / Math.tan(CFG.fov * Math.PI / 360);
 
 function step(dt, t) {
   computeNormals(pos, nrm);
@@ -1255,9 +1225,7 @@ requestAnimationFrame(frame);
 
 /* ---------------- Tuning panel: press T on a keyboard ---------------- */
 const panel = document.getElementById('panel');
-const TUNED = ['sheer', 'bend', 'windMax', 'sigmaMin', 'sigmaMax', 'timeScale', 'fabricLight', 'fabricShadow', 'camSaturation', 'particlesTouch'];
-const DEFAULTS = Object.fromEntries(TUNED.map(k => [k, CFG[k]]));
-const minRatio = CFG.sigmaMin / CFG.sigmaMax;   // the weak gust keeps its size relative to the strong one
+const DEFAULTS = { ...CFG };
 
 function setBend(v) {
   CFG.bend = v;
@@ -1267,54 +1235,175 @@ function setBend(v) {
   for (let k = bendStart; k < cCount; k++) cS[k] = v;
 }
 
+function setFov(v) {
+  CFG.fov = v;
+  camD = 1 / Math.tan(v * Math.PI / 360);
+  resizeCanvas();
+  updateDerived();
+}
+
 // the softness slider is cubic, so the soft end gets most of its travel
 const BEND_MAX = 0.8;
-const bendToSlider = b => Math.cbrt(b / BEND_MAX);
-const sliderToBend = t => BEND_MAX * t * t * t;
 
-const CONTROLS = [
-  { id: 'range', get: () => CFG.sigmaMax,
-    set: v => { CFG.sigmaMax = v; CFG.sigmaMin = v * minRatio; },
-    show: v => `半徑 ${Math.round(v * 50)}% 畫面高` },
-  { id: 'wind', get: () => CFG.windMax, set: v => { CFG.windMax = v; }, show: v => v.toFixed(2) },
-  { id: 'bend', get: () => bendToSlider(CFG.bend), set: t => setBend(sliderToBend(t)),
-    show: t => { const b = sliderToBend(t); return b < SOFT_EDGE * 0.98 ? `${b.toFixed(3)} 極軟` : b.toFixed(3); } },
-  { id: 'light', get: () => Math.round(CFG.fabricLight * 100), set: v => { CFG.fabricLight = v / 100; }, show: v => `${v}%` },
-  { id: 'dark', get: () => Math.round((1 - CFG.fabricShadow) * 100), set: v => { CFG.fabricShadow = 1 - v / 100; }, show: v => `${v}%` },
-  { id: 'sheer', get: () => Math.round((1 - CFG.sheer) * 100), set: v => { CFG.sheer = 1 - v / 100; }, show: v => `${v}%` },
-  { id: 'sat', get: () => Math.round(CFG.camSaturation * 100), set: v => { CFG.camSaturation = v / 100; }, show: v => `${v}%` },
-  { id: 'ptouch', get: () => CFG.particlesTouch, set: v => { CFG.particlesTouch = v; }, show: v => `${v} 點`,
-    commit: () => { if (coarse) buildCloth(); } },   // rebuilding is heavy, so only on release
-  { id: 'time', get: () => CFG.timeScale, set: v => { CFG.timeScale = v; }, show: v => `${v.toFixed(2)}×` },
+// small helpers for slider ↔ CFG and for the readouts
+const pct = (lo, hi) => ({ min: lo, max: hi, step: 1, to: v => Math.round(v * 100), from: s => s / 100, show: v => `${Math.round(v * 100)}%` });
+const invPct = (lo, hi) => ({ min: lo, max: hi, step: 1, to: v => Math.round((1 - v) * 100), from: s => 1 - s / 100, show: v => `${Math.round((1 - v) * 100)}%` });
+const fixed = n => v => v.toFixed(n);
+const ofScreen = v => `${Math.round(v * 50)}% 畫面高`;
+
+/* Every CFG value, grouped. rebuild: 'any' | 'touch' | 'desk' rebuilds the cloth when the slider is let go. */
+const CTRL_SPEC = [
+  { group: '風', items: [
+    { k: 'sigmaMax', label: '風的範圍', min: 0.1, max: 2.5, step: 0.01, show: v => '半徑 ' + ofScreen(v),
+      note: '停留夠久、風最強時，風吹到的範圍。' },
+    { k: 'sigmaMin', label: '剛起風時的範圍', min: 0.02, max: 1.5, step: 0.01, show: v => '半徑 ' + ofScreen(v),
+      note: '手指剛停下、風還弱時的範圍。風越強，範圍會從這裡慢慢擴大到上一項。' },
+    { k: 'windMax', label: '風的強度', min: 0, max: 6, step: 0.05, show: fixed(2),
+      note: '停留夠久之後的最大風速。越大，布飄得越高。' },
+    { k: 'buildTime', label: '風變強的速度', min: 0.3, max: 10, step: 0.1, show: v => `${v.toFixed(1)} 秒`,
+      note: '停留幾秒，風會到六成左右；大約三倍的時間接近全力。數字越小，風來得越急。' },
+    { k: 'baseWind', label: '一碰就有的微風', ...pct(0, 60),
+      note: '滑鼠一移到布上、手指一按下就立刻有的風，佔最大風力的比例。' },
+    { k: 'stillPx', label: '算作停住的範圍', min: 2, max: 100, step: 1, show: v => `${v} px`,
+      note: '手指或滑鼠在這個半徑內晃動都算停著，風會繼續累積；超出就算移動。' },
+    { k: 'moveDecay', label: '移動時風減弱的速度', min: 0, max: 5, step: 0.05, show: fixed(2),
+      note: '一邊移動一邊吹時，已累積的風力消退得多快。0 代表移動也不減弱。' },
+    { k: 'releaseDecay', label: '放開後風散去的速度', min: 0.05, max: 3, step: 0.01, show: fixed(2),
+      note: '手指放開或滑鼠移出畫面後，風多快消失。越小，布飄得越久才落下。' },
+    { k: 'follow', label: '風跟著手指的速度', min: 0.2, max: 10, step: 0.1, show: fixed(1),
+      note: '手指換位置時，風的中心多快滑到新位置。越小越有拖曳感。' },
+    { k: 'windReach', label: '風吹得多遠', min: 0.5, max: 5, step: 0.05, show: fixed(2), apply: updateDerived,
+      note: '風從窗戶往觀眾吹，離窗越遠越弱，到這個距離完全消失。決定布最多能飄到離你多近。' },
+    { k: 'lift', label: '風往上抬的比例', ...pct(0, 100),
+      note: '風除了往前，也微微往上吹，讓布往上飄起，而不只是往前鼓起。' },
+    { k: 'flutter', label: '風的紊亂', min: 0, max: 1.5, step: 0.01, show: fixed(2),
+      note: '風裡緩慢起伏的不均勻，讓布面出現流動的波紋。0 是完全平順的風。' },
+    { k: 'ambient', label: '環境微風', min: 0, max: 0.5, step: 0.005, show: fixed(3),
+      note: '沒有人操作時，讓窗簾輕輕呼吸的微風。' },
+  ] },
+  { group: '布', items: [
+    { k: 'bend', label: '布的軟硬', min: 0, max: 1, step: 0.001, ends: ['軟', '硬'],
+      to: v => Math.cbrt(v / BEND_MAX), from: t => BEND_MAX * t * t * t, apply: setBend,
+      show: v => (v < SOFT_EDGE * 0.98 ? `${v.toFixed(3)} 極軟` : v.toFixed(3)),
+      note: '布抵抗彎折的力量。越軟，皺褶越細碎；低於 0.02 進入極軟，斜向牽制也會一起放鬆。' },
+    { k: 'shear', label: '布的斜向牽制', min: 0, max: 1, step: 0.01, show: fixed(2), apply: () => setBend(CFG.bend),
+      note: '布抵抗被拉成斜菱形的力量。越低越像絲，越容易垂墜。布的軟硬在極軟區時會自動再調低。' },
+    { k: 'iterations', label: '布的緊實度', min: 1, max: 20, step: 1, show: v => `每步 ${v} 次`,
+      note: '每一步修正布長度的次數。越多，布越不會被拉長、越挺，也越吃效能。' },
+    { k: 'pleatWidth', label: '褶子的寬度', min: 0.08, max: 0.8, step: 0.01, show: ofScreen, rebuild: 'any',
+      note: '窗簾上每一道直向褶子的寬度。' },
+    { k: 'pleatDepth', label: '褶子的深度', min: 0, max: 0.6, step: 0.01, show: fixed(2), rebuild: 'any',
+      note: '褶子的凹凸程度，以深度除以寬度計算。0 是一塊平整的布。' },
+    { k: 'pleatJitter', label: '褶子的不規則', min: 0, max: 1, step: 0.01, show: fixed(2), rebuild: 'any',
+      note: '0 是整齊劃一的褶子，越大越像隨手掛上的窗簾。' },
+    { k: 'particlesTouch', label: '手機的布料粒子數', min: 400, max: 5200, step: 100, show: v => `${v} 點`, rebuild: 'touch',
+      note: coarse ? '手機上布料的精細度。越多越細緻，也越吃效能。'
+                   : '手機上布料的精細度。桌機不套用，可用開發者工具的手機模式預覽。' },
+    { k: 'particlesDesk', label: '桌機的布料粒子數', min: 1000, max: 9000, step: 100, show: v => `${v} 點`, rebuild: 'desk',
+      note: coarse ? '桌機上布料的精細度。手機不套用。' : '桌機上布料的精細度。越多越細緻，也越吃效能。' },
+  ] },
+  { group: '空氣', items: [
+    { k: 'gravity', label: '重力', min: 0, max: 12, step: 0.1, show: fixed(1),
+      note: '把布往下拉的力量。越小，布越輕飄、落下越慢。' },
+    { k: 'air', label: '空氣推布的力量', min: 0, max: 20, step: 0.1, show: fixed(1),
+      note: '空氣垂直推在布面上的力量。越大，布越像輕紗，被風一吹就走，也越快停下。' },
+    { k: 'airIso', label: '空氣的黏稠感', min: 0, max: 3, step: 0.05, show: fixed(2),
+      note: '不分方向的空氣阻力。越大，布的每個動作都越慢、越像在水裡。' },
+    { k: 'damping', label: '阻尼', min: 0, max: 0.08, step: 0.001, show: fixed(3),
+      note: '每一步流失的速度。越大，布晃動越快停止；越小，越會持續擺盪。' },
+  ] },
+  { group: '畫面與布的外觀', items: [
+    { k: 'sheer', label: '相機畫面的透明度', ...invPct(0, 95),
+      note: '印在布上的畫面有多透。布轉到側面、背光的地方會自然變得比較不透。' },
+    { k: 'camSaturation', label: '相機畫面的彩度', ...pct(0, 200), ends: ['黑白', '濃烈'],
+      note: '相機、照片或影片的顏色濃淡。100% 是原色。' },
+    { k: 'fabricLight', label: '布的亮部亮度', ...pct(50, 160),
+      note: '褶子受光那一側的亮度，印在上面的畫面也會跟著變亮或變暗。' },
+    { k: 'fabricShadow', label: '布的暗部的暗度', ...invPct(0, 100),
+      note: '褶子背光那一側有多暗。越暗，褶子的凹凸越明顯。' },
+    { k: 'weavePx', label: '織紋的間距', min: 1, max: 10, step: 0.5, show: v => `${v.toFixed(1)} px`, apply: updateDerived,
+      note: '紗布經緯線之間的距離（螢幕像素）。越大，織紋越粗、越看得出是布。' },
+    { k: 'hemPx', label: '下襬的寬度', min: 0, max: 40, step: 1, show: v => `${v} px`, apply: updateDerived,
+      note: '布最下方對摺成雙層的那一條，顏色會比較密。0 代表沒有下襬。' },
+  ] },
+  { group: '時間與鏡頭', items: [
+    { k: 'timeScale', label: '物理模擬的倍數', min: 0.1, max: 3, step: 0.05, show: v => `${v.toFixed(2)}×`, ends: ['慢動作', '快轉'],
+      note: '整個物理世界的時間快慢。1× 是真實速度，越小越像慢動作。' },
+    { k: 'sub', label: '物理計算的頻率', min: 60, max: 240, step: 10,
+      to: v => Math.round(1 / v), from: s => 1 / s, show: v => `每秒 ${Math.round(1 / v)} 步`,
+      note: '模擬時間每一秒計算幾步。越高越穩定細緻，也越吃效能；太低布可能會抖動。' },
+    { k: 'fov', label: '鏡頭視角', min: 6, max: 60, step: 1, show: v => `${v}°`, apply: setFov,
+      note: '看窗簾的鏡頭有多廣角。越小越像平面，布飄起時是往上飄；越大透視越強，布會像衝向你。' },
+    { k: 'wallZ', label: '窗戶的位置', min: -1, max: 0, step: 0.01, show: fixed(2),
+      note: '布後方窗玻璃的位置，布不會被吹到比這更後面。越接近 0，布越貼著窗。' },
+    { k: 'blendMinutes', label: '天色轉換的時間', min: 0, max: 180, step: 5, show: v => `${v} 分鐘`,
+      note: '兩段天色交界前後，漸層慢慢過渡所花的時間。' },
+  ] },
 ];
+
+const controlsEl = document.getElementById('controls');
+const CONTROLS = [];
 
 function paintSlider(input) {
   const t = (input.value - input.min) / (input.max - input.min);
   input.style.setProperty('--pct', `${(t * 100).toFixed(1)}%`);
 }
 
-CONTROLS.forEach(c => {
-  c.input = document.getElementById('p-' + c.id);
-  c.out = document.getElementById('o-' + c.id);
-  c.input.addEventListener('input', () => {
-    const v = parseFloat(c.input.value);
-    c.set(v);
-    c.out.textContent = c.show(v);
-    paintSlider(c.input);
+function needsRebuild(kind) {
+  return kind === 'any' || (kind === 'touch' && coarse) || (kind === 'desk' && !coarse);
+}
+
+CTRL_SPEC.forEach(({ group, items }) => {
+  const sec = document.createElement('section');
+  sec.setAttribute('aria-label', group);
+  const h = document.createElement('h2');
+  h.textContent = group;
+  sec.appendChild(h);
+  items.forEach(it => {
+    const id = 'p-' + it.k;
+    const row = document.createElement('div');
+    row.className = 'row' + (it.rebuild && needsRebuild(it.rebuild) ? ' rebuild' : '');
+    const label = document.createElement('label');
+    label.htmlFor = id; label.textContent = it.label;
+    const out = document.createElement('output');
+    out.htmlFor = id;
+    const input = document.createElement('input');
+    Object.assign(input, { id, type: 'range', min: it.min, max: it.max, step: it.step });
+    const note = document.createElement('div');
+    note.className = 'note';
+    const code = document.createElement('code');
+    code.textContent = it.k;
+    note.append(code, it.note);
+    row.append(label, out, input);
+    if (it.ends) {
+      const ends = document.createElement('div');
+      ends.className = 'ends'; ends.setAttribute('aria-hidden', 'true');
+      it.ends.forEach(t => { const sp = document.createElement('span'); sp.textContent = t; ends.appendChild(sp); });
+      row.appendChild(ends);
+    }
+    row.appendChild(note);
+    sec.appendChild(row);
+
+    input.addEventListener('input', () => {
+      const raw = parseFloat(input.value);
+      const v = it.from ? it.from(raw) : raw;
+      CFG[it.k] = v;
+      if (it.apply) it.apply(v);
+      out.textContent = it.show(v);
+      paintSlider(input);
+    });
+    if (it.rebuild) input.addEventListener('change', () => { if (needsRebuild(it.rebuild)) buildCloth(); });
+    CONTROLS.push({ it, input, out });
   });
-  if (c.commit) c.input.addEventListener('change', c.commit);
+  controlsEl.appendChild(sec);
 });
 
-document.getElementById('n-ptouch').textContent = coarse
-  ? '放開滑桿後會重建布料'
-  : '只用在手機上；桌機可用開發者工具的手機模式預覽';
-
 function syncPanel() {
-  CONTROLS.forEach(c => {
-    const v = c.get();
-    c.input.value = v;
-    c.out.textContent = c.show(parseFloat(c.input.value));
-    paintSlider(c.input);
+  CONTROLS.forEach(({ it, input, out }) => {
+    const v = CFG[it.k];
+    input.value = it.to ? it.to(v) : v;
+    out.textContent = it.show(v);
+    paintSlider(input);
   });
 }
 
@@ -1334,10 +1423,13 @@ window.addEventListener('keydown', e => {
 });
 
 document.getElementById('p-reset').addEventListener('click', () => {
-  const rebuild = coarse && CFG.particlesTouch !== DEFAULTS.particlesTouch;
-  TUNED.forEach(k => { CFG[k] = DEFAULTS[k]; });
-  setBend(DEFAULTS.bend);
-  if (rebuild) buildCloth();
+  Object.assign(CFG, DEFAULTS);
+  setBend(CFG.bend);
+  setFov(CFG.fov);
+  const target = coarse ? CFG.particlesTouch : CFG.particlesDesk;
+  const b = builtWith;
+  if (!b || b.target !== target || b.pleatWidth !== CFG.pleatWidth ||
+      b.pleatDepth !== CFG.pleatDepth || b.pleatJitter !== CFG.pleatJitter) buildCloth();
   syncPanel();
 });
 
@@ -1345,7 +1437,8 @@ const copyBtn = document.getElementById('p-copy');
 let copyTimer = 0;
 copyBtn.addEventListener('click', () => {
   const r = v => +v.toFixed(4);
-  const text = TUNED.map(k => `  ${k}: ${r(CFG[k])},`).join('\n');
+  const text = Object.keys(CFG)
+    .map(k => `  ${k}: ${k === 'sub' ? `1 / ${Math.round(1 / CFG.sub)}` : r(CFG[k])},`).join('\n');
   const done = msg => {
     copyBtn.textContent = msg;
     clearTimeout(copyTimer);
