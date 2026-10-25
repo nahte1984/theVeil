@@ -31,12 +31,166 @@
     font: 400 17px/1.5 Fraunces, Georgia, serif; color: #fff3e1;
   }
   #fallback[hidden] { display: none; }
+
+  /* ---------- tuning panel (desktop, press T) ---------- */
+  #panel {
+    --fg: #f6f2ea;
+    --muted: rgba(246, 242, 234, 0.6);
+    --line: rgba(255, 255, 255, 0.16);
+    --glass: rgba(26, 24, 34, 0.46);
+    position: fixed; z-index: 5;
+    top: max(20px, env(safe-area-inset-top, 0px));
+    right: max(20px, env(safe-area-inset-right, 0px));
+    width: 276px; max-height: calc(100% - 40px); overflow: auto;
+    box-sizing: border-box; padding: 18px 20px 16px;
+    display: flex; flex-direction: column; gap: 12px;
+    scrollbar-width: thin;
+    color: var(--fg);
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 18px 50px rgba(10, 8, 20, 0.28);
+    font: 400 13px/1.4 "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+    opacity: 0; visibility: hidden; transform: translateY(-6px);
+    transition: opacity .35s ease, transform .35s ease, visibility 0s linear .35s;
+  }
+  #panel.open {
+    opacity: 1; visibility: visible; transform: none;
+    transition: opacity .35s ease, transform .35s ease, visibility 0s;
+  }
+  #panel header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding-bottom: 12px; border-bottom: 1px solid var(--line);
+  }
+  #panel .name { font: 500 19px/1 Fraunces, "Iowan Old Style", Georgia, serif; letter-spacing: .01em; }
+  #panel .hint { color: var(--muted); font-size: 12px; }
+  #panel kbd {
+    display: inline-block; min-width: 1.4em; padding: 1px 5px; margin-right: 4px;
+    border: 1px solid var(--line); border-radius: 4px; text-align: center;
+    font: 500 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--fg);
+  }
+  #panel section { display: flex; flex-direction: column; gap: 10px; }
+  #panel section + section { padding-top: 12px; border-top: 1px solid var(--line); }
+  #panel h2 {
+    margin: 0; color: var(--muted);
+    font: 500 11px/1 "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+    letter-spacing: .24em;
+  }
+  #panel .row { display: grid; grid-template-columns: 1fr auto; row-gap: 6px; align-items: baseline; }
+  #panel .row label { letter-spacing: .04em; }
+  #panel output {
+    color: var(--muted); font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+  }
+  #panel .ends {
+    grid-column: 1 / -1; display: flex; justify-content: space-between;
+    margin-top: -2px; color: var(--muted); font-size: 11px; letter-spacing: .08em;
+  }
+  #panel input[type="range"] {
+    grid-column: 1 / -1; width: 100%; margin: 0; height: 18px;
+    -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer;
+    --pct: 50%;
+  }
+  #panel input[type="range"]::-webkit-slider-runnable-track {
+    height: 2px; border-radius: 2px;
+    background: linear-gradient(to right, var(--fg) var(--pct), var(--line) var(--pct));
+  }
+  #panel input[type="range"]::-moz-range-track {
+    height: 2px; border-radius: 2px;
+    background: linear-gradient(to right, var(--fg) var(--pct), var(--line) var(--pct));
+  }
+  #panel input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; margin-top: -6px; border-radius: 50%;
+    background: var(--fg); border: 0; box-shadow: 0 1px 6px rgba(0, 0, 0, .35);
+  }
+  #panel input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--fg); border: 0; box-shadow: 0 1px 6px rgba(0, 0, 0, .35);
+  }
+  #panel input[type="range"]:focus { outline: none; }
+  #panel input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(246, 242, 234, .3); }
+  #panel input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(246, 242, 234, .3); }
+  #panel footer {
+    display: flex; gap: 8px; justify-content: flex-end;
+    padding-top: 12px; border-top: 1px solid var(--line);
+  }
+  #panel button {
+    font: inherit; font-size: 12px; letter-spacing: .04em; color: var(--fg);
+    background: transparent; border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 14px; cursor: pointer;
+    transition: background-color .2s ease, border-color .2s ease;
+  }
+  #panel button:hover { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .3); }
+  #panel button:focus-visible { outline: 1px solid var(--fg); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) {
+    #panel, #panel.open { transition: none; transform: none; }
+  }
 </style>
 </head>
 <body>
 <canvas id="gl" tabindex="0" aria-label="前鏡頭影像印在垂掛的紗布上。滑鼠或手指停在哪裡，風就從那裡的布後面往前吹，停得越久風越強。"></canvas>
 <video id="cam" playsinline muted autoplay></video>
 <p id="fallback" hidden>這個瀏覽器無法使用 WebGL，所以紗布無法顯示。</p>
+
+<aside id="panel" aria-label="參數" aria-hidden="true">
+  <header>
+    <span class="name">theVeil</span>
+    <span class="hint"><kbd>T</kbd>收起</span>
+  </header>
+  <section aria-label="風">
+    <h2>風</h2>
+    <div class="row">
+      <label for="p-range">風的範圍</label><output id="o-range" for="p-range"></output>
+      <input id="p-range" type="range" min="0.2" max="2.5" step="0.01">
+    </div>
+    <div class="row">
+      <label for="p-wind">風的強度</label><output id="o-wind" for="p-wind"></output>
+      <input id="p-wind" type="range" min="0" max="5" step="0.05">
+    </div>
+  </section>
+  <section aria-label="布">
+    <h2>布</h2>
+    <div class="row">
+      <label for="p-bend">布的軟硬</label><output id="o-bend" for="p-bend"></output>
+      <input id="p-bend" type="range" min="0" max="1" step="0.001">
+      <div class="ends" aria-hidden="true"><span>軟</span><span>硬</span></div>
+    </div>
+    <div class="row">
+      <label for="p-light">布的亮部亮度</label><output id="o-light" for="p-light"></output>
+      <input id="p-light" type="range" min="50" max="160" step="1">
+    </div>
+    <div class="row">
+      <label for="p-dark">布的暗部的暗度</label><output id="o-dark" for="p-dark"></output>
+      <input id="p-dark" type="range" min="0" max="100" step="1">
+    </div>
+  </section>
+  <section aria-label="相機畫面">
+    <h2>相機畫面</h2>
+    <div class="row">
+      <label for="p-sheer">相機畫面的透明度</label><output id="o-sheer" for="p-sheer"></output>
+      <input id="p-sheer" type="range" min="0" max="95" step="1">
+    </div>
+    <div class="row">
+      <label for="p-sat">相機畫面的彩度</label><output id="o-sat" for="p-sat"></output>
+      <input id="p-sat" type="range" min="0" max="200" step="1">
+      <div class="ends" aria-hidden="true"><span>黑白</span><span>濃烈</span></div>
+    </div>
+  </section>
+  <section aria-label="時間">
+    <h2>時間</h2>
+    <div class="row">
+      <label for="p-time">物理模擬的倍數</label><output id="o-time" for="p-time"></output>
+      <input id="p-time" type="range" min="0.1" max="2" step="0.05">
+      <div class="ends" aria-hidden="true"><span>慢動作</span><span>快轉</span></div>
+    </div>
+  </section>
+  <footer>
+    <button id="p-reset" type="button">重設</button>
+    <button id="p-copy" type="button">複製設定</button>
+  </footer>
+</aside>
 
 <script>
 (() => {
@@ -57,12 +211,12 @@ const CFG = {
   // fabric
   particlesTouch: 2800,  // cloth resolution on phones
   particlesDesk: 5200,   // cloth resolution on desktop
-  sheer: 0.40,           // opacity seen face-on; folds turned away look denser (≈55% see-through overall)
+  sheer: 0.15,           // opacity seen face-on; folds turned away look denser
   pleatWidth: 0.26,      // one pleat, in units of half the screen height
   pleatDepth: 0.34,      // pleat amplitude ÷ pleat width (the previous version was ≈0.07, so ≈5× deeper)
   pleatJitter: 0.35,     // irregularity of the pleats (0 = perfect sine)
-  bend: 0.12,            // low = soft, fine wrinkles; high = stiffer, rounder folds
-  shear: 0.5,
+  bend: 0,               // low = soft, fine wrinkles; high = stiffer, rounder folds
+  shear: 0.5,            // below bend 0.02 this eases off too, for an extra-soft drape (see shearFor)
   iterations: 6,         // constraint passes per step (higher = less stretchy)
 
   // air
@@ -73,7 +227,7 @@ const CFG = {
   ambient: 0.08,         // faint breeze that keeps the curtain breathing
 
   // wind from the pointer
-  windMax: 2.3,          // wind speed after a long rest (world units / sim s)
+  windMax: 3.5,          // wind speed after a long rest (world units / sim s)
   windReach: 2.4,        // the gust fades out this far in front of the window
   lift: 0.22,            // wind also rises a little, so the curtain floats up
   baseWind: 0.12,        // a light breath as soon as the pointer is on the curtain
@@ -82,18 +236,23 @@ const CFG = {
   moveDecay: 0.9,        // how fast the built-up wind weakens while the pointer travels
   releaseDecay: 0.42,    // how fast it dies away after the pointer leaves
   follow: 1.8,           // how quickly the gust drifts to a new pointer position
-  sigmaMin: 0.22,        // gust radius when weak …
-  sigmaMax: 1.45,        // … and when strong (covers the whole curtain)
+  sigmaMin: 0.106,       // gust radius when weak …
+  sigmaMax: 0.7,         // … and when strong
   flutter: 0.38,         // slow travelling unevenness inside the gust
 
   // time & view
-  timeScale: 0.45,       // slow motion: 1 = real time
+  timeScale: 0.45,       // 1 = real time, below 1 = slow motion
   sub: 1 / 120,          // physics step, in simulated seconds
   fov: 14,               // narrow lens: the curtain reads flat, lifting reads as lifting
   wallZ: -0.25,          // window pane behind the curtain
   blendMinutes: 40,      // sky crossfade length around each time boundary
   weavePx: 3.0,          // spacing of the woven threads, in CSS px
   hemPx: 7,              // folded hem at the bottom edge, in CSS px
+
+  // look
+  fabricLight: 0.7,      // brightness of the lit side of each fold
+  fabricShadow: 0.5,     // brightness of the shaded side (lower = darker folds)
+  camSaturation: 0.65,   // colour of the camera picture (0 = black & white)
 };
 
 /* Sky gradients from the Figma frame "kshanaClock" (304:2), top → bottom. */
@@ -219,6 +378,9 @@ uniform float uMix;
 uniform float uVideoAspect;
 uniform float uScreenAspect;
 uniform float uSheer;
+uniform float uLight;
+uniform float uShadow;
+uniform float uSat;
 uniform float uHem;
 uniform vec2 uClothMin;
 uniform vec2 uClothSize;
@@ -246,6 +408,8 @@ void main() {
   else t.y = 0.5 + (s.y - 0.5) * uVideoAspect / uScreenAspect;
   t.x = 1.0 - t.x;
   vec3 cam = texture2D(uVideo, clamp(t, 0.0, 1.0)).rgb;
+  float luma = dot(cam, vec3(0.299, 0.587, 0.114));
+  cam = clamp(mix(vec3(luma), cam, uSat), 0.0, 1.0);
 
   vec3 print = mix(title, cam, uMix);
 
@@ -253,7 +417,7 @@ void main() {
   vec3 L = normalize(vec3(-0.6, 0.42, 0.68));
   float lit = dot(n, L);
   float wrap = clamp((lit + 0.3) / 1.3, 0.0, 1.0);
-  float shade = 0.48 + 0.62 * wrap;
+  float shade = mix(uShadow, uLight, wrap);
   float rim = pow(1.0 - ndv, 2.5);
   vec3 col = print * shade + rim * 0.08;
   // a faint matte sheen along the ridges that catch the light
@@ -343,8 +507,14 @@ function drawTitle() {
 }
 
 /* ---------------- Cloth ---------------- */
-let cols, rows, N, pos, prev, rend, nrm, nrmR, inv, tether, cA, cB, cR, cS, cCount, idxCount, idxType;
+let cols, rows, N, pos, prev, rend, nrm, nrmR, inv, tether, cA, cB, cR, cS, cCount, shearStart, bendStart, idxCount, idxType;
 let clothMin, clothSize, buildAspect, hemV, weave, zMax;
+
+// below bend 0.02 the diagonal links relax too, so the gauze can drape and crumple more freely
+const SOFT_EDGE = 0.02;
+function shearFor(bend) {
+  return bend >= SOFT_EDGE ? CFG.shear : CFG.shear * (0.2 + 0.8 * bend / SOFT_EDGE);
+}
 
 function buildCloth() {
   const aspect = innerWidth / innerHeight;
@@ -405,11 +575,13 @@ function buildCloth() {
     if (c < cols - 1) add(i, i + 1, 1);
     if (r < rows - 1) add(i, i + cols, 1);
   }
+  shearStart = A.length;
   for (let r = 0; r < rows - 1; r++) for (let c = 0; c < cols - 1; c++) {
     const i = r * cols + c;
-    add(i, i + cols + 1, CFG.shear);
-    add(i + 1, i + cols, CFG.shear);
+    add(i, i + cols + 1, shearFor(CFG.bend));
+    add(i + 1, i + cols, shearFor(CFG.bend));
   }
+  bendStart = A.length;                    // bend links come last, so the panel can retune them
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
     const i = r * cols + c;
     if (c < cols - 2) add(i, i + 2, CFG.bend);
@@ -797,6 +969,9 @@ function draw(now) {
   gl.uniform1f(cp.u.uVideoAspect, videoAspect);
   gl.uniform1f(cp.u.uScreenAspect, buildAspect);
   gl.uniform1f(cp.u.uSheer, CFG.sheer);
+  gl.uniform1f(cp.u.uLight, CFG.fabricLight);
+  gl.uniform1f(cp.u.uShadow, CFG.fabricShadow);
+  gl.uniform1f(cp.u.uSat, CFG.camSaturation);
   gl.uniform1f(cp.u.uHem, hemV);
   gl.uniform2fv(cp.u.uClothMin, clothMin);
   gl.uniform2fv(cp.u.uClothSize, clothSize);
@@ -867,11 +1042,109 @@ if (document.fonts && document.fonts.load) {
 }
 requestAnimationFrame(frame);
 
+/* ---------------- Tuning panel: press T on a keyboard ---------------- */
+const panel = document.getElementById('panel');
+const TUNED = ['sheer', 'bend', 'windMax', 'sigmaMin', 'sigmaMax', 'timeScale', 'fabricLight', 'fabricShadow', 'camSaturation'];
+const DEFAULTS = Object.fromEntries(TUNED.map(k => [k, CFG[k]]));
+const minRatio = CFG.sigmaMin / CFG.sigmaMax;   // the weak gust keeps its size relative to the strong one
+
+function setBend(v) {
+  CFG.bend = v;
+  if (!cS) return;
+  const sh = shearFor(v);
+  for (let k = shearStart; k < bendStart; k++) cS[k] = sh;
+  for (let k = bendStart; k < cCount; k++) cS[k] = v;
+}
+
+// the softness slider is cubic, so the soft end gets most of its travel
+const BEND_MAX = 0.8;
+const bendToSlider = b => Math.cbrt(b / BEND_MAX);
+const sliderToBend = t => BEND_MAX * t * t * t;
+
+const CONTROLS = [
+  { id: 'range', get: () => CFG.sigmaMax,
+    set: v => { CFG.sigmaMax = v; CFG.sigmaMin = v * minRatio; },
+    show: v => `半徑 ${Math.round(v * 50)}% 畫面高` },
+  { id: 'wind', get: () => CFG.windMax, set: v => { CFG.windMax = v; }, show: v => v.toFixed(2) },
+  { id: 'bend', get: () => bendToSlider(CFG.bend), set: t => setBend(sliderToBend(t)),
+    show: t => { const b = sliderToBend(t); return b < SOFT_EDGE * 0.98 ? `${b.toFixed(3)} 極軟` : b.toFixed(3); } },
+  { id: 'light', get: () => Math.round(CFG.fabricLight * 100), set: v => { CFG.fabricLight = v / 100; }, show: v => `${v}%` },
+  { id: 'dark', get: () => Math.round((1 - CFG.fabricShadow) * 100), set: v => { CFG.fabricShadow = 1 - v / 100; }, show: v => `${v}%` },
+  { id: 'sheer', get: () => Math.round((1 - CFG.sheer) * 100), set: v => { CFG.sheer = 1 - v / 100; }, show: v => `${v}%` },
+  { id: 'sat', get: () => Math.round(CFG.camSaturation * 100), set: v => { CFG.camSaturation = v / 100; }, show: v => `${v}%` },
+  { id: 'time', get: () => CFG.timeScale, set: v => { CFG.timeScale = v; }, show: v => `${v.toFixed(2)}×` },
+];
+
+function paintSlider(input) {
+  const t = (input.value - input.min) / (input.max - input.min);
+  input.style.setProperty('--pct', `${(t * 100).toFixed(1)}%`);
+}
+
+CONTROLS.forEach(c => {
+  c.input = document.getElementById('p-' + c.id);
+  c.out = document.getElementById('o-' + c.id);
+  c.input.addEventListener('input', () => {
+    const v = parseFloat(c.input.value);
+    c.set(v);
+    c.out.textContent = c.show(v);
+    paintSlider(c.input);
+  });
+});
+
+function syncPanel() {
+  CONTROLS.forEach(c => {
+    const v = c.get();
+    c.input.value = v;
+    c.out.textContent = c.show(parseFloat(c.input.value));
+    paintSlider(c.input);
+  });
+}
+
+function togglePanel(force) {
+  const open = force ?? !panel.classList.contains('open');
+  if (open) syncPanel();
+  panel.classList.toggle('open', open);
+  panel.setAttribute('aria-hidden', String(!open));
+  if (!open && panel.contains(document.activeElement)) canvas.focus({ preventScroll: true });
+}
+
+window.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+  // e.code is the physical key, so T also works while a Chinese input method (ㄔ) is on
+  if (e.code === 'KeyT' || e.key === 't' || e.key === 'T') { e.preventDefault(); togglePanel(); }
+  else if (e.key === 'Escape' && panel.classList.contains('open')) togglePanel(false);
+});
+
+document.getElementById('p-reset').addEventListener('click', () => {
+  TUNED.forEach(k => { CFG[k] = DEFAULTS[k]; });
+  setBend(DEFAULTS.bend);
+  syncPanel();
+});
+
+const copyBtn = document.getElementById('p-copy');
+let copyTimer = 0;
+copyBtn.addEventListener('click', () => {
+  const r = v => +v.toFixed(4);
+  const text = TUNED.map(k => `  ${k}: ${r(CFG[k])},`).join('\n');
+  const done = msg => {
+    copyBtn.textContent = msg;
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => { copyBtn.textContent = '複製設定'; }, 1600);
+  };
+  console.log('theVeil settings — paste into CFG:\n' + text);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => done('已複製'), () => done('已印在主控台'));
+  } else {
+    done('已印在主控台');
+  }
+});
+
 // for tuning in the browser console, e.g. theVeil.CFG.windMax = 3
 window.theVeil = {
   CFG, wind,
   advance,                                  // advance(realSeconds) without waiting for frames
   freeze(v = true) { frozen = v; },         // stop the clock (for stills)
+  setBend,
   bench(n = 120) { const t0 = performance.now(); for (let i = 0; i < n; i++) step(CFG.sub, simT); return (performance.now() - t0) / n; },
   info() { return { cols, rows, particles: N, constraints: cCount }; },
   stats() {
