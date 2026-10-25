@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#286d8c">
-<title>theVeil</title>
+<title>TongPoo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Radley&display=swap">
 <style>
   html, body {
     margin: 0; height: 100%; overflow: hidden;
@@ -28,7 +28,7 @@
   #fallback {
     position: fixed; inset: 0; display: grid; place-items: center;
     margin: 0; padding: 24px; text-align: center;
-    font: 400 17px/1.5 Fraunces, Georgia, serif; color: #fff3e1;
+    font: 400 17px/1.5 Radley, Georgia, serif; color: #fff3e1;
   }
   #fallback[hidden] { display: none; }
 
@@ -42,8 +42,8 @@
     top: max(20px, env(safe-area-inset-top, 0px));
     right: max(20px, env(safe-area-inset-right, 0px));
     width: 276px; max-height: calc(100% - 40px); overflow: auto;
-    box-sizing: border-box; padding: 18px 20px 16px;
-    display: flex; flex-direction: column; gap: 12px;
+    box-sizing: border-box; padding: 16px 20px 14px;
+    display: flex; flex-direction: column; gap: 10px;
     scrollbar-width: thin;
     color: var(--fg);
     background: var(--glass);
@@ -61,23 +61,23 @@
   }
   #panel header {
     display: flex; align-items: baseline; justify-content: space-between;
-    padding-bottom: 12px; border-bottom: 1px solid var(--line);
+    padding-bottom: 10px; border-bottom: 1px solid var(--line);
   }
-  #panel .name { font: 500 19px/1 Fraunces, "Iowan Old Style", Georgia, serif; letter-spacing: .01em; }
+  #panel .name { font: 400 21px/1 Radley, Georgia, serif; letter-spacing: -.02em; }
   #panel .hint { color: var(--muted); font-size: 12px; }
   #panel kbd {
     display: inline-block; min-width: 1.4em; padding: 1px 5px; margin-right: 4px;
     border: 1px solid var(--line); border-radius: 4px; text-align: center;
     font: 500 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--fg);
   }
-  #panel section { display: flex; flex-direction: column; gap: 10px; }
-  #panel section + section { padding-top: 12px; border-top: 1px solid var(--line); }
+  #panel section { display: flex; flex-direction: column; gap: 8px; }
+  #panel section + section { padding-top: 10px; border-top: 1px solid var(--line); }
   #panel h2 {
     margin: 0; color: var(--muted);
     font: 500 11px/1 "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
     letter-spacing: .24em;
   }
-  #panel .row { display: grid; grid-template-columns: 1fr auto; row-gap: 6px; align-items: baseline; }
+  #panel .row { display: grid; grid-template-columns: 1fr auto; row-gap: 3px; align-items: baseline; }
   #panel .row label { letter-spacing: .04em; }
   #panel output {
     color: var(--muted); font-variant-numeric: tabular-nums;
@@ -87,8 +87,9 @@
     grid-column: 1 / -1; display: flex; justify-content: space-between;
     margin-top: -2px; color: var(--muted); font-size: 11px; letter-spacing: .08em;
   }
+  #panel .note { grid-column: 1 / -1; margin-top: -2px; color: var(--muted); font-size: 11px; line-height: 1.5; }
   #panel input[type="range"] {
-    grid-column: 1 / -1; width: 100%; margin: 0; height: 18px;
+    grid-column: 1 / -1; width: 100%; margin: 0; height: 16px;
     -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer;
     --pct: 50%;
   }
@@ -114,7 +115,7 @@
   #panel input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(246, 242, 234, .3); }
   #panel footer {
     display: flex; gap: 8px; justify-content: flex-end;
-    padding-top: 12px; border-top: 1px solid var(--line);
+    padding-top: 10px; border-top: 1px solid var(--line);
   }
   #panel button {
     font: inherit; font-size: 12px; letter-spacing: .04em; color: var(--fg);
@@ -136,7 +137,7 @@
 
 <aside id="panel" aria-label="參數" aria-hidden="true">
   <header>
-    <span class="name">theVeil</span>
+    <span class="name">TongPoo</span>
     <span class="hint"><kbd>T</kbd>收起</span>
   </header>
   <section aria-label="風">
@@ -165,6 +166,11 @@
       <label for="p-dark">布的暗部的暗度</label><output id="o-dark" for="p-dark"></output>
       <input id="p-dark" type="range" min="0" max="100" step="1">
     </div>
+    <div class="row">
+      <label for="p-ptouch">手機的布料粒子數</label><output id="o-ptouch" for="p-ptouch"></output>
+      <input id="p-ptouch" type="range" min="800" max="5200" step="100">
+      <div class="note" id="n-ptouch"></div>
+    </div>
   </section>
   <section aria-label="相機畫面">
     <h2>相機畫面</h2>
@@ -182,7 +188,7 @@
     <h2>時間</h2>
     <div class="row">
       <label for="p-time">物理模擬的倍數</label><output id="o-time" for="p-time"></output>
-      <input id="p-time" type="range" min="0.1" max="2" step="0.05">
+      <input id="p-time" type="range" min="0.1" max="3" step="0.05">
       <div class="ends" aria-hidden="true"><span>慢動作</span><span>快轉</span></div>
     </div>
   </section>
@@ -197,7 +203,8 @@
 'use strict';
 
 /* ------------------------------------------------------------------
-   theVeil — front camera printed on a sheer, pleated curtain.
+   TongPoo — front camera printed on a sheer, pleated curtain.
+   Inspired by Yellow Magic Orchestra / Tong Poo (1978).
    Cloth: Verlet particles + distance constraints (structural / shear / bend),
           rest lengths taken from the pleated starting shape.
    Wind:  blows from behind the curtain (+z, toward the viewer) wherever the
@@ -205,13 +212,13 @@
    Time:  the simulation runs in slow motion and is interpolated for display.
    ------------------------------------------------------------------ */
 
-const TITLE = 'theVeil';
+const TITLE = 'Tong Poo';
 
 const CFG = {
   // fabric
-  particlesTouch: 2800,  // cloth resolution on phones
+  particlesTouch: 800,   // cloth resolution on phones
   particlesDesk: 5200,   // cloth resolution on desktop
-  sheer: 0.15,           // opacity seen face-on; folds turned away look denser
+  sheer: 0.7,            // opacity seen face-on; folds turned away look denser
   pleatWidth: 0.26,      // one pleat, in units of half the screen height
   pleatDepth: 0.34,      // pleat amplitude ÷ pleat width (the previous version was ≈0.07, so ≈5× deeper)
   pleatJitter: 0.35,     // irregularity of the pleats (0 = perfect sine)
@@ -241,7 +248,7 @@ const CFG = {
   flutter: 0.38,         // slow travelling unevenness inside the gust
 
   // time & view
-  timeScale: 0.45,       // 1 = real time, below 1 = slow motion
+  timeScale: 2,          // 1 = real time, below 1 = slow motion
   sub: 1 / 120,          // physics step, in simulated seconds
   fov: 14,               // narrow lens: the curtain reads flat, lifting reads as lifting
   wallZ: -0.25,          // window pane behind the curtain
@@ -250,22 +257,23 @@ const CFG = {
   hemPx: 7,              // folded hem at the bottom edge, in CSS px
 
   // look
-  fabricLight: 0.7,      // brightness of the lit side of each fold
-  fabricShadow: 0.5,     // brightness of the shaded side (lower = darker folds)
-  camSaturation: 0.65,   // colour of the camera picture (0 = black & white)
+  fabricLight: 0.8,      // brightness of the lit side of each fold
+  fabricShadow: 0.75,    // brightness of the shaded side (lower = darker folds)
+  camSaturation: 0.55,   // colour of the camera picture (0 = black & white)
 };
 
-/* Sky gradients from the Figma frame "kshanaClock" (304:2), top → bottom. */
+/* Sky gradients from the Figma frame "bgSet" (304:2), top → bottom:
+   sky colour, horizon colour at ~75%, a pale glow band at ~85%, horizon colour again at the bottom. */
 const SKY = [
-  { h: 3,  top: '#270e3c', bot: '#3d94b1' }, // 03:00–05:00
-  { h: 5,  top: '#88c0ff', bot: '#fff3c4' }, // 05:00–12:00
-  { h: 12, top: '#fff3e1', bot: '#b0dcde' }, // 12:00–17:00
-  { h: 17, top: '#fdd7ca', bot: '#4089a9' }, // 17:00–19:00
-  { h: 19, top: '#286d8c', bot: '#270e3c' }, // 19:00–03:00
+  { h: 3,  stops: [0.75481, 0.84615], cols: ['#270e3c', '#3d94b1', '#b7edff', '#3d94b1'] }, // 03:00–05:00
+  { h: 5,  stops: [0.75,    0.84615], cols: ['#88c0ff', '#fff3c4', '#ffffff', '#fff3c4'] }, // 05:00–12:00
+  { h: 12, stops: [0.75481, 0.84615], cols: ['#fff3e1', '#b0dcde', '#e7feff', '#b0dcde'] }, // 12:00–17:00
+  { h: 17, stops: [0.75,    0.84615], cols: ['#fdd7ca', '#4089a9', '#c5edff', '#4089a9'] }, // 17:00–19:00
+  { h: 19, stops: [0.75,    0.85],    cols: ['#286d8c', '#270e3c', '#b396cb', '#270e3c'] }, // 19:00–03:00
 ];
 
 const hexToRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
-SKY.forEach(s => { s.topC = hexToRgb(s.top); s.botC = hexToRgb(s.bot); });
+SKY.forEach(s => { s.rgb = s.cols.map(hexToRgb); });
 const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 const rgbToHex = c => '#' + c.map(v => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join('');
 
@@ -297,7 +305,34 @@ function skyAt(hr) {
   if (since < half) { a = prev; b = cur; t = 0.5 + since / B; }
   else if (until < half) { a = cur; b = next; t = 0.5 - until / B; }
   t = t * t * (3 - 2 * t);
-  return { top: lerp3(a.topC, b.topC, t), bot: lerp3(a.botC, b.botC, t) };
+  return {
+    cols: a.rgb.map((c, k) => lerp3(c, b.rgb[k], t)),
+    stops: [a.stops[0] + (b.stops[0] - a.stops[0]) * t, a.stops[1] + (b.stops[1] - a.stops[1]) * t],
+  };
+}
+
+// colour of the sky at a height (0 = top, 1 = bottom), same maths as the shader
+function skyColor(sky, y) {
+  const [c0, c1, c2, c3] = sky.cols, [p1, p2] = sky.stops;
+  if (y < p1) return lerp3(c0, c1, y / p1);
+  if (y < p2) return lerp3(c1, c2, (y - p1) / (p2 - p1));
+  return lerp3(c2, c3, (y - p2) / (1 - p2));
+}
+
+// words on the curtain: white (as in the Figma) unless deep plum reads better on that sky
+const INK_DARK = hexToRgb('#270e3c');
+const relLum = c => {
+  const l = c.map(v => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+  return 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2];
+};
+const LUM_DARK = relLum(INK_DARK);
+function inkFor(sky) {
+  const L = relLum(skyColor(sky, 0.42));
+  const onWhite = 1.05 / (L + 0.05), onDark = (L + 0.05) / (LUM_DARK + 0.05);
+  // a short, soft hand-over so the colour never flips in a single frame
+  let t = Math.min(Math.max((Math.log(onDark / onWhite) + 0.15) / 0.3, 0), 1);
+  t = t * t * (3 - 2 * t);
+  return lerp3([1, 1, 1], INK_DARK, t);
 }
 
 /* ---------------- WebGL setup ---------------- */
@@ -339,17 +374,27 @@ precision mediump float;
 #endif
 `;
 
+const SKY_GLSL = `
+uniform vec3 uC0, uC1, uC2, uC3;
+uniform vec2 uStops;
+vec3 sky(float fromTop) {
+  float t = clamp(fromTop, 0.0, 1.0);
+  if (t < uStops.x) return mix(uC0, uC1, t / uStops.x);
+  if (t < uStops.y) return mix(uC1, uC2, (t - uStops.x) / (uStops.y - uStops.x));
+  return mix(uC2, uC3, (t - uStops.y) / (1.0 - uStops.y));
+}
+`;
+
 /* Background: the sky gradient, dithered so dark gradients don't band. */
 const bgProg = program(`
 attribute vec2 aPos;
 varying float vY;
 void main() { vY = aPos.y * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }
-`, PRECISION + `
-uniform vec3 uTop, uBot;
+`, PRECISION + SKY_GLSL + `
 varying float vY;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void main() {
-  vec3 c = mix(uBot, uTop, vY);
+  vec3 c = sky(1.0 - vY);
   c += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
   gl_FragColor = vec4(c, 1.0);
 }
@@ -371,8 +416,9 @@ void main() {
   vV = vec3(0.0, 0.0, uCamZ) - aPos;
   gl_Position = uMVP * vec4(aPos, 1.0);
 }
-`, (derivs ? '#extension GL_OES_standard_derivatives : enable\n#define WEAVE 1\n' : '') + PRECISION + `
+`, (derivs ? '#extension GL_OES_standard_derivatives : enable\n#define WEAVE 1\n' : '') + PRECISION + SKY_GLSL + `
 uniform sampler2D uTitle;
+uniform vec3 uInk;
 uniform sampler2D uVideo;
 uniform float uMix;
 uniform float uVideoAspect;
@@ -400,7 +446,9 @@ void main() {
   vec2 rest = uClothMin + vUv * uClothSize;
   vec2 s = (rest + uViewHalf) / (2.0 * uViewHalf);
 
-  vec3 title = texture2D(uTitle, clamp(s, 0.0, 1.0)).rgb;
+  // before the camera opens, the gauze carries the sky's own gradient with the words on it
+  float words = texture2D(uTitle, clamp(s, 0.0, 1.0)).a;
+  vec3 title = mix(sky(1.0 - s.y), uInk, words);
 
   // camera: cover-fit the screen, mirrored like a selfie
   vec2 t = s;
@@ -482,28 +530,40 @@ const videoTex = makeTex();
 const titleCanvas = document.createElement('canvas');
 const tctx = titleCanvas.getContext('2d');
 const coarse = matchMedia('(pointer: coarse)').matches;
-let titleSub = coarse ? 'tap to begin' : 'click to begin';
+let titleSub = 'Hold to Blow';
 
+// Layout from the Figma splash (a 388 × 743 frame); only the words' coverage is drawn here,
+// the shader colours them and lays them on the sky gradient.
 function drawTitle() {
-  const aspect = innerWidth / innerHeight;
-  const w = Math.round(Math.min(innerWidth * Math.min(devicePixelRatio || 1, 2), 1400));
-  const h = Math.round(w / aspect);
+  const W = innerWidth, H = innerHeight;
+  const w = Math.round(Math.min(W * Math.min(devicePixelRatio || 1, 2), 1600));
+  const h = Math.round(w * H / W);
   titleCanvas.width = w; titleCanvas.height = h;
-  tctx.fillStyle = '#f3efe8';
-  tctx.fillRect(0, 0, w, h);
-  const size = Math.min(w * 0.17, h * 0.085);
+  const k = w / W;
+  const sc = Math.min(W / 388, H / 743);
+  const at = fy => (H / 2 + (fy - 371.5) * sc) * k;    // Figma y → canvas y
+  const font = px => `400 ${(px * sc * k).toFixed(1)}px Radley, "Iowan Old Style", Georgia, serif`;
+  const spacing = 'letterSpacing' in tctx;
+
+  tctx.clearRect(0, 0, w, h);
   tctx.textAlign = 'center';
   tctx.textBaseline = 'middle';
-  tctx.fillStyle = '#2c2f3c';
-  tctx.font = `600 ${size}px Fraunces, "Iowan Old Style", Georgia, serif`;
-  tctx.fillText(TITLE, w / 2, h * 0.47);
-  tctx.fillStyle = '#5a5c66';
-  tctx.font = `400 ${Math.max(11, size * 0.22)}px Fraunces, "Iowan Old Style", Georgia, serif`;
-  if ('letterSpacing' in tctx) tctx.letterSpacing = `${(size * 0.04).toFixed(1)}px`;
-  tctx.fillText(titleSub, w / 2, h * 0.47 + size * 0.8);
-  if ('letterSpacing' in tctx) tctx.letterSpacing = '0px';
+  tctx.fillStyle = '#fff';
+
+  tctx.font = font(50);
+  if (spacing) tctx.letterSpacing = `${(-2.5 * sc * k).toFixed(2)}px`;
+  tctx.fillText(TITLE, w / 2, at(263.5));
+  if (spacing) tctx.letterSpacing = '0px';
+
+  tctx.font = font(15);
+  tctx.fillText('inspired by', w / 2, at(316.5));
+  tctx.fillText('Yellow Magic Orchestra / Tong Poo (1978)', w / 2, at(335.5));
+
+  tctx.font = font(24);
+  tctx.fillText(titleSub, w / 2, at(372));
+
   gl.bindTexture(gl.TEXTURE_2D, titleTex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, titleCanvas);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, titleCanvas);
 }
 
 /* ---------------- Cloth ---------------- */
@@ -888,17 +948,25 @@ function resizeCanvas() {
   mvp = mul4(P, V);
 }
 
-let skyCache = { top: SKY[4].topC, bot: SKY[4].botC }, skyStamp = -1e9, themeStamp = -1e9;
+let skyCache = skyAt(hourNow()), inkCache = inkFor(skyCache), skyStamp = -1e9, themeStamp = -1e9;
 const themeMeta = document.querySelector('meta[name="theme-color"]');
+
+function setSkyUniforms(prog) {
+  const c = skyCache.cols;
+  gl.uniform3fv(prog.u.uC0, c[0]); gl.uniform3fv(prog.u.uC1, c[1]);
+  gl.uniform3fv(prog.u.uC2, c[2]); gl.uniform3fv(prog.u.uC3, c[3]);
+  gl.uniform2fv(prog.u.uStops, skyCache.stops);
+}
 
 function draw(now) {
   gl.viewport(0, 0, canvas.width, canvas.height);
 
   if (now - skyStamp > 250) {
     skyCache = skyAt(hourNow());
+    inkCache = inkFor(skyCache);
     skyStamp = now;
     if (now - themeStamp > 5000) {
-      const hex = rgbToHex(skyCache.top);
+      const hex = rgbToHex(skyCache.cols[0]);
       themeMeta.content = hex;
       document.body.style.background = hex;
       themeStamp = now;
@@ -914,8 +982,7 @@ function draw(now) {
   gl.bindBuffer(gl.ARRAY_BUFFER, bgBuf);
   gl.enableVertexAttribArray(bgProg.a.aPos);
   gl.vertexAttribPointer(bgProg.a.aPos, 2, gl.FLOAT, false, 0, 0);
-  gl.uniform3fv(bgProg.u.uTop, skyCache.top);
-  gl.uniform3fv(bgProg.u.uBot, skyCache.bot);
+  setSkyUniforms(bgProg);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   gl.disableVertexAttribArray(bgProg.a.aPos);
 
@@ -962,6 +1029,8 @@ function draw(now) {
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, titleTex);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, videoTex);
   gl.uniform1i(cp.u.uTitle, 0);
+  setSkyUniforms(cp);
+  gl.uniform3fv(cp.u.uInk, inkCache);
   gl.uniform1i(cp.u.uVideo, 1);
   gl.uniformMatrix4fv(cp.u.uMVP, false, mvp);
   gl.uniform1f(cp.u.uCamZ, camD);
@@ -992,13 +1061,14 @@ function draw(now) {
 
 /* ---------------- Loop ---------------- */
 let last = performance.now(), running = true, frozen = false;
+const MAX_STEPS = 6;   // physics steps per frame; 2× at 60 fps needs 4
 
 function advance(dt) {
   updateWind(dt);
   acc += dt * CFG.timeScale;
   let steps = 0;
-  while (acc >= CFG.sub && steps < 4) { step(CFG.sub, simT); simT += CFG.sub; acc -= CFG.sub; steps++; }
-  if (steps === 4 && acc >= CFG.sub) acc = 0;
+  while (acc >= CFG.sub && steps < MAX_STEPS) { step(CFG.sub, simT); simT += CFG.sub; acc -= CFG.sub; steps++; }
+  if (steps === MAX_STEPS && acc >= CFG.sub) acc = 0;   // can't keep up: let time slip rather than stall
   interpolate(Math.min(acc / CFG.sub, 1));
 }
 
@@ -1038,13 +1108,13 @@ drawTitle();
 buildCloth();
 interpolate(0);
 if (document.fonts && document.fonts.load) {
-  document.fonts.load(`600 64px Fraunces`).then(() => drawTitle()).catch(() => {});
+  document.fonts.load('400 50px Radley').then(() => drawTitle()).catch(() => {});
 }
 requestAnimationFrame(frame);
 
 /* ---------------- Tuning panel: press T on a keyboard ---------------- */
 const panel = document.getElementById('panel');
-const TUNED = ['sheer', 'bend', 'windMax', 'sigmaMin', 'sigmaMax', 'timeScale', 'fabricLight', 'fabricShadow', 'camSaturation'];
+const TUNED = ['sheer', 'bend', 'windMax', 'sigmaMin', 'sigmaMax', 'timeScale', 'fabricLight', 'fabricShadow', 'camSaturation', 'particlesTouch'];
 const DEFAULTS = Object.fromEntries(TUNED.map(k => [k, CFG[k]]));
 const minRatio = CFG.sigmaMin / CFG.sigmaMax;   // the weak gust keeps its size relative to the strong one
 
@@ -1072,6 +1142,8 @@ const CONTROLS = [
   { id: 'dark', get: () => Math.round((1 - CFG.fabricShadow) * 100), set: v => { CFG.fabricShadow = 1 - v / 100; }, show: v => `${v}%` },
   { id: 'sheer', get: () => Math.round((1 - CFG.sheer) * 100), set: v => { CFG.sheer = 1 - v / 100; }, show: v => `${v}%` },
   { id: 'sat', get: () => Math.round(CFG.camSaturation * 100), set: v => { CFG.camSaturation = v / 100; }, show: v => `${v}%` },
+  { id: 'ptouch', get: () => CFG.particlesTouch, set: v => { CFG.particlesTouch = v; }, show: v => `${v} 點`,
+    commit: () => { if (coarse) buildCloth(); } },   // rebuilding is heavy, so only on release
   { id: 'time', get: () => CFG.timeScale, set: v => { CFG.timeScale = v; }, show: v => `${v.toFixed(2)}×` },
 ];
 
@@ -1089,7 +1161,12 @@ CONTROLS.forEach(c => {
     c.out.textContent = c.show(v);
     paintSlider(c.input);
   });
+  if (c.commit) c.input.addEventListener('change', c.commit);
 });
+
+document.getElementById('n-ptouch').textContent = coarse
+  ? '放開滑桿後會重建布料'
+  : '只用在手機上；桌機可用開發者工具的手機模式預覽';
 
 function syncPanel() {
   CONTROLS.forEach(c => {
@@ -1116,8 +1193,10 @@ window.addEventListener('keydown', e => {
 });
 
 document.getElementById('p-reset').addEventListener('click', () => {
+  const rebuild = coarse && CFG.particlesTouch !== DEFAULTS.particlesTouch;
   TUNED.forEach(k => { CFG[k] = DEFAULTS[k]; });
   setBend(DEFAULTS.bend);
+  if (rebuild) buildCloth();
   syncPanel();
 });
 
@@ -1131,7 +1210,7 @@ copyBtn.addEventListener('click', () => {
     clearTimeout(copyTimer);
     copyTimer = setTimeout(() => { copyBtn.textContent = '複製設定'; }, 1600);
   };
-  console.log('theVeil settings — paste into CFG:\n' + text);
+  console.log('TongPoo settings — paste into CFG:\n' + text);
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(() => done('已複製'), () => done('已印在主控台'));
   } else {
@@ -1139,8 +1218,8 @@ copyBtn.addEventListener('click', () => {
   }
 });
 
-// for tuning in the browser console, e.g. theVeil.CFG.windMax = 3
-window.theVeil = {
+// for tuning in the browser console, e.g. tongPoo.CFG.windMax = 3
+window.tongPoo = {
   CFG, wind,
   advance,                                  // advance(realSeconds) without waiting for frames
   freeze(v = true) { frozen = v; },         // stop the clock (for stills)
