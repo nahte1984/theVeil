@@ -32,10 +32,11 @@
   }
   #fallback[hidden] { display: none; }
 
-  /* invisible hit areas laid over the words printed on the curtain */
+  /* keyboard and screen-reader stand-ins for the links printed on the curtain;
+     taps and clicks land on the curtain itself, which knows where the printed words have moved */
   #actions[hidden] { display: none; }
   #actions button {
-    position: fixed; z-index: 3; margin: 0; padding: 0;
+    position: fixed; z-index: 3; margin: 0; padding: 0; pointer-events: none;
     transform: translate(-50%, -50%);
     background: none; border: 0; border-radius: 8px;
     color: transparent; font-size: 1px; cursor: pointer;
@@ -188,10 +189,10 @@
 'use strict';
 
 /* ------------------------------------------------------------------
-   TongPoo — front camera printed on a sheer, pleated curtain.
+   TongPoo — front camera printed on a sheer flag, hung by its two top corners like a street election flag.
    Inspired by Yellow Magic Orchestra / Tong Poo (1978).
    Cloth: Verlet particles + distance constraints (structural / shear / bend),
-          rest lengths taken from the pleated starting shape.
+          only the top-left and top-right corners are fixed; the rest sags under gravity.
    Wind:  blows from behind the curtain (+z, toward the viewer) wherever the
           pointer rests; the longer it rests, the stronger and wider the wind.
    Time:  the simulation runs in slow motion and is interpolated for display.
@@ -205,22 +206,25 @@ const CFG = {
   particlesDesk: 5200,   // cloth resolution on desktop
   sheer: 1,              // the curtain's real opacity (1 = nothing behind it shows until the wind lifts it)
   skyTint: 0.55,          // the sky gradient laid over the curtain (0 = none, 1 = picture fully covered)
-  pleatWidth: 0.26,      // one pleat, in units of half the screen height
-  pleatDepth: 0.34,      // pleat amplitude ÷ pleat width (the previous version was ≈0.07, so ≈5× deeper)
-  pleatJitter: 0.5,     // irregularity of the pleats (0 = perfect sine)
+  hooks: 4,              // ties along the top edge, evenly spaced; the outer two are the top corners
+  swag: 0.3,             // how deep the fabric droops between two ties, as a share of the gap between them
+  gather: 1,             // 0 = each drop stays a clean scallop, 1 = the extra fabric bunches into folds under the ties
+  hookSpan: 1,           // distance between the outer ties, as a share of the screen width
+  hookY: 1,              // height of the ties (1 = top edge of the screen)
+  flagLength: 1,         // length of the flag, as a share of the screen height
   bend: 0,               // low = soft, fine wrinkles; high = stiffer, rounder folds
   shear: 0.5,            // below bend 0.02 this eases off too, for an extra-soft drape (see shearFor)
   iterations: 6,         // constraint passes per step (higher = less stretchy)
 
   // air
-  gravity: 4.2,
-  air: 7,              // drag along the fabric normal: light, floaty gauze
-  airIso: 0.5,           // small drag in every direction
+  gravity: 3.5,
+  air: 4,              // drag along the fabric normal: light, floaty gauze
+  airIso: 3,             // small drag in every direction
   damping: 0.01,        // velocity lost per step
   ambient: 0.08,         // faint breeze that keeps the curtain breathing
 
   // wind from the pointer
-  windMax: 2.25,          // wind speed after a long rest (world units / sim s)
+  windMax: 2.15,          // wind speed after a long rest (world units / sim s)
   windReach: 2.4,        // the gust fades out this far in front of the window
   lift: 0.22,            // wind also rises a little, so the curtain floats up
   baseWind: 0.6,        // a light breath as soon as the pointer is on the curtain
@@ -236,11 +240,11 @@ const CFG = {
   // time & view
   timeScale: 2,          // 1 = real time, below 1 = slow motion
   sub: 1 / 120,          // physics step, in simulated seconds
-  fov: 14,               // narrow lens: the curtain reads flat, lifting reads as lifting
+  fov: 25,               // narrow lens: the curtain reads flat, lifting reads as lifting
   wallZ: -0.25,          // window pane behind the curtain
   blendMinutes: 40,      // sky crossfade length around each time boundary
   weavePx: 3,          // spacing of the woven threads, in CSS px
-  hemPx: 15,              // folded hem at the bottom edge, in CSS px
+  hemPx: 10,              // folded hems along the top and bottom edges, in CSS px
 
   // look
   fabricLight: 0.9,      // brightness of the lit side of each fold
@@ -488,7 +492,8 @@ void main() {
   float w = max(th.x * f.x, th.y * f.y);
   keep *= 1.0 - 0.11 * (w - 0.5) * max(f.x, f.y);
 #endif
-  float hem = 1.0 - smoothstep(uHem * 0.75, uHem, vUv.y);   // folded hem: two layers
+  // folded hems along the bottom and the top (where the flag is tied up): two layers
+  float hem = 1.0 - smoothstep(uHem * 0.75, uHem, min(vUv.y, 1.0 - vUv.y));
 
   float through = clamp(pow(1.0 - uSheer, ex) * keep, 0.0, 1.0);
   through = mix(through, through * through, hem);
@@ -617,12 +622,23 @@ function placeActions() {
   actionsEl.hidden = actionRects.length === 0;
   actionRects.forEach((r, i) => {
     const b = actionBtns[i].style;
-    b.left = `${r.x}px`; b.top = `${r.y}px`; b.width = `${r.w}px`; b.height = `${r.h}px`;
+    b.width = `${r.w}px`; b.height = `${r.h}px`;
+  });
+  followActions();
+}
+
+// The flag sags and sways, so the focus rings ride along with the words printed on it.
+function followActions() {
+  actionRects.forEach((r, i) => {
+    const at = clothAt(r.x, r.y) || [r.x, r.y];
+    const b = actionBtns[i].style, left = `${at[0].toFixed(1)}px`, top = `${at[1].toFixed(1)}px`;
+    if (b.left !== left) b.left = left;
+    if (b.top !== top) b.top = top;
   });
 }
 
 /* ---------------- Cloth ---------------- */
-let cols, rows, N, pos, prev, rend, nrm, nrmR, inv, tether, cA, cB, cR, cS, cCount, shearStart, bendStart, idxCount, idxType;
+let cols, rows, N, pos, prev, rend, nrm, nrmR, inv, tetherL, tetherR, tetherC, tieL, tieR, perGap, gapW, cA, cB, cR, cS, cCount, shearStart, bendStart, idxCount, idxType;
 let clothMin, clothSize, buildAspect, hemV, weave, zMax;
 
 let builtWith = null;   // the settings the current cloth was built from
@@ -642,30 +658,59 @@ function shearFor(bend) {
   return bend >= SOFT_EDGE ? CFG.shear : CFG.shear * (0.2 + 0.8 * bend / SOFT_EDGE);
 }
 
+// One drop: the top edge between two neighbouring ties hangs as a parabola `depth` deep,
+// its n points spaced evenly along it. x runs from the left tie, y is how far below the ties.
+function swagCurve(gap, depth, n) {
+  const K = 240, a = new Float64Array(K + 1);
+  for (let k = 1; k <= K; k++) {
+    const w0 = -1 + 2 * (k - 1) / K, w1 = -1 + 2 * k / K;
+    a[k] = a[k - 1] + Math.hypot(gap / K, depth * (w0 * w0 - w1 * w1));
+  }
+  const xs = new Float64Array(n), ys = new Float64Array(n);
+  for (let j = 0, k = 0; j < n; j++) {
+    const want = a[K] * j / (n - 1);
+    while (k < K - 1 && a[k + 1] < want) k++;
+    const f = Math.min(Math.max((want - a[k]) / ((a[k + 1] - a[k]) || 1), 0), 1);
+    const w = -1 + 2 * (k + f) / K;
+    xs[j] = (w + 1) * gap / 2;
+    ys[j] = depth * (1 - w * w);
+  }
+  return { xs, ys, length: a[K] };
+}
+
 function buildCloth() {
   const aspect = innerWidth / innerHeight;
   buildAspect = aspect;
-  const left = -aspect * 1.06, right = aspect * 1.06;   // a little wider than the screen
-  const top = 1.03, bottom = -1.07;                      // rod just above, hem just below
-  const cw = right - left, ch = top - bottom;
+  // Tied along its top edge at evenly spaced points, the way campaign flags are tied to a railing;
+  // between two ties the fabric is longer than the gap, so it droops.
+  const ties = Math.max(2, Math.round(CFG.hooks)), gaps = ties - 1;
+  const half = aspect * CFG.hookSpan, span = 2 * half, gap = span / gaps;
+  const top = CFG.hookY, bottom = top - 2 * CFG.flagLength, ch = top - bottom;
+  const depth = gap * CFG.swag;
+  const natW = swagCurve(gap, depth, 2).length * gaps;
   const target = coarse ? CFG.particlesTouch : CFG.particlesDesk;
-  const lambda = CFG.pleatWidth;
+  gapW = gap;
 
-  // at least 9 points across every pleat; the rest of the budget goes to the height
-  const sp = Math.sqrt(cw * ch / target);
-  const dxWanted = Math.min(sp, lambda / 9);
-  cols = Math.max(12, Math.round(cw / dxWanted) + 1);
-  rows = Math.max(12, Math.min(Math.round(target / cols), Math.round(ch / (dxWanted * 0.8)) + 1));
+  // a whole number of columns per gap, so every tie lands on one, and enough of them to draw
+  // each drop and the folds under the ties; the rest of the budget goes to the height
+  const sp = Math.sqrt(natW * ch / target);
+  perGap = Math.max(10, Math.round(natW / sp / gaps));
+  cols = perGap * gaps + 1;
+  const dxN = natW / (cols - 1);
+  rows = Math.max(12, Math.min(Math.round(target / cols), Math.round(ch / (dxN * 0.8)) + 1));
   N = cols * rows;
-  const dx = cw / (cols - 1), dy = ch / (rows - 1);
+  const dy = ch / (rows - 1);
 
-  // pleats: a slightly irregular wave hung from the rod
-  const k = 2 * Math.PI / lambda;
-  const amp = CFG.pleatDepth * lambda;
-  const j = CFG.pleatJitter;
-  const pleatZ = x =>
-    amp * (1 - 0.25 * j + 0.25 * j * Math.sin(0.29 * k * x + 1.3)) *
-    Math.sin(k * x + j * 1.4 * Math.sin(0.41 * k * x + 0.7));
+  // start already hanging: the top edge in its drops, every column straight down from it
+  const curve = swagCurve(gap, depth, perGap + 1);
+  const topX = new Float64Array(cols), topY = new Float64Array(cols);
+  tieL = new Int32Array(cols); tieR = new Int32Array(cols);
+  for (let c = 0; c < cols; c++) {
+    const g = Math.min(Math.floor(c / perGap), gaps - 1), j = c - g * perGap;
+    topX[c] = -half + g * gap + curve.xs[j];
+    topY[c] = curve.ys[j];
+    tieL[c] = g * perGap; tieR[c] = (g + 1) * perGap;
+  }
 
   pos = new Float32Array(N * 3);
   prev = new Float32Array(N * 3);
@@ -673,28 +718,35 @@ function buildCloth() {
   nrm = new Float32Array(N * 3);
   nrmR = new Float32Array(N * 3);
   inv = new Float32Array(N);
+  const nat = new Float32Array(N * 2);      // the flag laid out flat: its true size
   const uv = new Float32Array(N * 2);
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const i = r * cols + c;
-      const x = left + c * dx, y = top - r * dy;
-      const z = pleatZ(x) + (Math.random() - 0.5) * 0.002;
+      const u = c / (cols - 1);
+      const x = topX[c], y = top - r * dy - topY[c];
+      const z = (Math.random() - 0.5) * 0.002;
       pos[i * 3] = prev[i * 3] = x;
       pos[i * 3 + 1] = prev[i * 3 + 1] = y;
       pos[i * 3 + 2] = prev[i * 3 + 2] = z;
-      uv[i * 2] = c / (cols - 1);
+      nat[i * 2] = c * dxN; nat[i * 2 + 1] = -r * dy;
+      uv[i * 2] = u;
       uv[i * 2 + 1] = 1 - r / (rows - 1);
-      inv[i] = r === 0 ? 0 : 1;           // top row hangs on the rod
+      inv[i] = 1;
     }
   }
+  for (let c = 0; c < cols; c += perGap) inv[c] = 0;   // the ties
 
-  // rest lengths come from the pleated shape, so the extra fabric stays in the folds
+  // Rest lengths come from the flat flag, not from where it starts. The diagonals are the exception:
+  // with `gather` at 0 the gauze gives way on the bias, the sheared hang is its rest shape and each drop
+  // stays a clean scallop; at 1 the fabric wants to square up again, so it bunches into folds under the ties.
   const A = [], B = [], R = [], S = [];
-  const add = (a, b, stiff) => {
-    const a3 = a * 3, b3 = b * 3;
+  const add = (a, b, stiff, flat = 1) => {
     A.push(a); B.push(b); S.push(stiff);
-    R.push(Math.hypot(pos[b3] - pos[a3], pos[b3 + 1] - pos[a3 + 1], pos[b3 + 2] - pos[a3 + 2]));
+    const f = Math.hypot(nat[b * 2] - nat[a * 2], nat[b * 2 + 1] - nat[a * 2 + 1]);
+    const h = Math.hypot(pos[b * 3] - pos[a * 3], pos[b * 3 + 1] - pos[a * 3 + 1]);
+    R.push(h + (f - h) * flat);
   };
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
     const i = r * cols + c;
@@ -704,8 +756,8 @@ function buildCloth() {
   shearStart = A.length;
   for (let r = 0; r < rows - 1; r++) for (let c = 0; c < cols - 1; c++) {
     const i = r * cols + c;
-    add(i, i + cols + 1, shearFor(CFG.bend));
-    add(i + 1, i + cols, shearFor(CFG.bend));
+    add(i, i + cols + 1, shearFor(CFG.bend), CFG.gather);
+    add(i + 1, i + cols, shearFor(CFG.bend), CFG.gather);
   }
   bendStart = A.length;                    // bend links come last, so the panel can retune them
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
@@ -717,16 +769,17 @@ function buildCloth() {
   cR = Float32Array.from(R); cS = Float32Array.from(S);
   cCount = cA.length;
 
-  // tethers: no point may drift farther from its hook than the fabric between them allows
-  tether = new Float32Array(N);
+  // Tethers, so the weight of the whole flag can't stretch it out of shape:
+  // no point of the top edge may hang lower than its place in its drop (measured from the ties on either side),
+  // and every point hangs no farther below the top-edge point of its column than the fabric between them.
+  tetherL = new Float32Array(cols);
+  tetherR = new Float32Array(cols);
   for (let c = 0; c < cols; c++) {
-    let len = 0;
-    for (let r = 1; r < rows; r++) {
-      const a = ((r - 1) * cols + c) * 3, b = (r * cols + c) * 3;
-      len += Math.hypot(pos[b] - pos[a], pos[b + 1] - pos[a + 1], pos[b + 2] - pos[a + 2]);
-      tether[r * cols + c] = len * 1.01;
-    }
+    tetherL[c] = Math.hypot(topX[c] - topX[tieL[c]], topY[c]) * 1.0002;
+    tetherR[c] = Math.hypot(topX[tieR[c]] - topX[c], topY[c]) * 1.0002;
   }
+  tetherC = new Float32Array(N);
+  for (let i = cols; i < N; i++) tetherC[i] = Math.floor(i / cols) * dy * 1.005;
 
   const big = N > 65535 && uintIdx;
   const idx = big ? new Uint32Array((cols - 1) * (rows - 1) * 6) : new Uint16Array((cols - 1) * (rows - 1) * 6);
@@ -739,10 +792,12 @@ function buildCloth() {
   }
   idxCount = n;
 
-  clothMin = [left, bottom];
-  clothSize = [cw, ch];
+  // the picture is printed so that, hanging flat, it would fill the screen between the hooks
+  clothMin = [-half, bottom];
+  clothSize = [span, ch];
   updateDerived();
-  builtWith = { target, pleatWidth: CFG.pleatWidth, pleatDepth: CFG.pleatDepth, pleatJitter: CFG.pleatJitter };
+  builtWith = { target, hooks: CFG.hooks, swag: CFG.swag, gather: CFG.gather,
+                hookSpan: CFG.hookSpan, hookY: CFG.hookY, flagLength: CFG.flagLength };
 
   computeNormals(pos, nrm);
   gl.bindBuffer(gl.ARRAY_BUFFER, posBuf); gl.bufferData(gl.ARRAY_BUFFER, pos, gl.DYNAMIC_DRAW);
@@ -820,13 +875,14 @@ function updateWind(dt) {
 /* The eye behind the curtain links out, but only where the wind has actually uncovered it. */
 const EYE_URL = 'https://en.wikipedia.org/wiki/Chinese_information_operations_and_information_warfare';
 let windPointer = null;                 // the finger (or mouse) that drives the wind
-const presses = new Map();              // pointerId → where and when it went down, and whether it hit the eye
+const presses = new Map();              // pointerId → where and when it went down, and whether it hit the eye or a printed link
 const hover = { x: 0, y: 0, mouse: false, inside: false };
 let cursorOnEye = false;
 
 canvas.addEventListener('pointerdown', e => {
   const onEye = eyeVisibleAt(e.clientX, e.clientY);
-  presses.set(e.pointerId, { t: performance.now(), x: e.clientX, y: e.clientY, onEye });
+  const action = camState === 'failed' ? actionUnder(e.clientX, e.clientY) : -1;
+  presses.set(e.pointerId, { t: performance.now(), x: e.clientX, y: e.clientY, onEye, action });
   try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
   // a second finger tapping the uncovered eye leaves the first finger's wind where it is
   if (onEye && wind.down && windPointer !== null && windPointer !== e.pointerId) return;
@@ -855,9 +911,14 @@ const endPointer = e => {
   // a quick tap or click on the uncovered eye opens the link (inside the gesture, so it isn't blocked)
   const p = presses.get(e.pointerId);
   presses.delete(e.pointerId);
-  if (e.type === 'pointerup' && p && p.onEye && performance.now() - p.t < 1000 &&
-      Math.hypot(e.clientX - p.x, e.clientY - p.y) < 14 && eyeVisibleAt(e.clientX, e.clientY)) {
+  const tap = e.type === 'pointerup' && p && performance.now() - p.t < 1000 &&
+              Math.hypot(e.clientX - p.x, e.clientY - p.y) < 14;
+  if (tap && p.onEye && eyeVisibleAt(e.clientX, e.clientY)) {
     window.open(EYE_URL, '_blank', 'noopener');
+  } else if (tap && p.action === 0) {
+    retryCamera();                  // the links printed on the curtain, wherever the wind has put them
+  } else if (tap && p.action === 1) {
+    chooseMedia();
   }
 };
 canvas.addEventListener('pointerup', endPointer);
@@ -957,16 +1018,112 @@ function solve() {
 }
 
 function applyTethers() {
-  const p = pos, T = tether, C = cols;
-  for (let i = C; i < N; i++) {
-    const h = (i % C) * 3, i3 = i * 3;
+  const p = pos, last = cols - 1;
+  const pull = (i3, h, L) => {
     const dx = p[i3] - p[h], dy = p[i3 + 1] - p[h + 1], dz = p[i3 + 2] - p[h + 2];
-    const d2 = dx * dx + dy * dy + dz * dz, L = T[i];
+    const d2 = dx * dx + dy * dy + dz * dz;
     if (d2 > L * L) {
       const s = L / Math.sqrt(d2);
       p[i3] = p[h] + dx * s; p[i3 + 1] = p[h + 1] + dy * s; p[i3 + 2] = p[h + 2] + dz * s;
     }
+  };
+  // the top edge, from the ties on either side at once: if keeping one distance breaks the other,
+  // the point goes to the nearest place on the circle where both spheres meet
+  const within = (i3, h, R) => {
+    const dx = p[i3] - p[h], dy = p[i3 + 1] - p[h + 1], dz = p[i3 + 2] - p[h + 2];
+    return dx * dx + dy * dy + dz * dz <= R * R * 1.000001;
+  };
+  for (let c = 1; c < last; c++) {
+    if (c % perGap === 0) continue;         // a tie
+    const i3 = c * 3, H = tieL[c] * 3, L = tieR[c] * 3, a = tetherL[c], b = tetherR[c];
+    const inA = within(i3, H, a), inB = within(i3, L, b);
+    if (inA && inB) continue;
+    if (!inA) { pull(i3, H, a); if (within(i3, L, b)) continue; }
+    else { pull(i3, L, b); if (within(i3, H, a)) continue; }
+    let ex = p[L] - p[H], ey = p[L + 1] - p[H + 1], ez = p[L + 2] - p[H + 2];
+    const D = Math.sqrt(ex * ex + ey * ey + ez * ez) || 1;
+    ex /= D; ey /= D; ez /= D;
+    const x0 = (a * a - b * b + D * D) / (2 * D), rho = Math.sqrt(Math.max(a * a - x0 * x0, 0));
+    const vx = p[i3] - p[H], vy = p[i3 + 1] - p[H + 1], vz = p[i3 + 2] - p[H + 2];
+    const along = vx * ex + vy * ey + vz * ez;
+    let ox = vx - along * ex, oy = vy - along * ey, oz = vz - along * ez;
+    const ol = Math.sqrt(ox * ox + oy * oy + oz * oz);
+    if (ol < 1e-9) { ox = 0; oy = -1; oz = 0; } else { ox /= ol; oy /= ol; oz /= ol; }
+    p[i3] = p[H] + ex * x0 + ox * rho;
+    p[i3 + 1] = p[H + 1] + ey * x0 + oy * rho;
+    p[i3 + 2] = p[H + 2] + ez * x0 + oz * rho;
   }
+  for (let i = cols, c = 0; i < N; i++) {   // each column, from its top-edge point
+    pull(i * 3, c * 3, tetherC[i]);
+    if (++c === cols) c = 0;
+  }
+}
+
+/* Where the bit of curtain printed for screen point (X, Y) hangs right now, in CSS px. */
+function clothAt(X, Y) {
+  if (!rend || !clothSize) return null;
+  const rx = (X / innerWidth * 2 - 1) * buildAspect, ry = 1 - Y / innerHeight * 2;
+  const u = (rx - clothMin[0]) / clothSize[0], v = (ry - clothMin[1]) / clothSize[1];
+  if (!(u >= 0 && u <= 1 && v >= 0 && v <= 1)) return null;
+  const cf = u * (cols - 1), rf = (1 - v) * (rows - 1);
+  const c0 = Math.min(Math.floor(cf), cols - 2), r0 = Math.min(Math.floor(rf), rows - 2);
+  const fc = cf - c0, fr = rf - r0;
+  const i00 = (r0 * cols + c0) * 3, i01 = i00 + 3, i10 = i00 + cols * 3, i11 = i10 + 3;
+  const at = k => (rend[i00 + k] * (1 - fc) + rend[i01 + k] * fc) * (1 - fr) +
+                  (rend[i10 + k] * (1 - fc) + rend[i11 + k] * fc) * fr;
+  const w = camD / (camD - at(2)), aspect = innerWidth / innerHeight;
+  return [(at(0) * w / aspect + 1) / 2 * innerWidth, (1 - at(1) * w) / 2 * innerHeight];
+}
+
+/* The other way round: which printed screen point is on the front-most fabric under (cx, cy), or null. */
+function clothPrintAt(cx, cy) {
+  if (!rend || !clothSize) return null;
+  const aspect = innerWidth / innerHeight;
+  const px = (cx / innerWidth) * 2 - 1, py = 1 - (cy / innerHeight) * 2;
+  if (!projXY || projXY.length !== N * 2) projXY = new Float32Array(N * 2);
+  const q = projXY, p = rend;
+  for (let i = 0; i < N; i++) {
+    const w = camD - p[i * 3 + 2];
+    q[i * 2] = p[i * 3] * camD / w / aspect;
+    q[i * 2 + 1] = p[i * 3 + 1] * camD / w;
+  }
+  let best = null, bestZ = -1e9;
+  const tri = (a, b, d, ca, ra, cb, rb, cd, rd) => {
+    const ax = q[a * 2], ay = q[a * 2 + 1], bx = q[b * 2], by = q[b * 2 + 1], dx = q[d * 2], dy = q[d * 2 + 1];
+    const den = (by - dy) * (ax - dx) + (dx - bx) * (ay - dy);
+    if (Math.abs(den) < 1e-12) return;
+    const l1 = ((by - dy) * (px - dx) + (dx - bx) * (py - dy)) / den;
+    const l2 = ((dy - ay) * (px - dx) + (ax - dx) * (py - dy)) / den;
+    const l3 = 1 - l1 - l2;
+    if (l1 < 0 || l2 < 0 || l3 < 0) return;
+    const z = l1 * p[a * 3 + 2] + l2 * p[b * 3 + 2] + l3 * p[d * 3 + 2];
+    if (z <= bestZ) return;
+    bestZ = z;
+    const u = (l1 * ca + l2 * cb + l3 * cd) / (cols - 1), v = 1 - (l1 * ra + l2 * rb + l3 * rd) / (rows - 1);
+    best = [((u * clothSize[0] + clothMin[0]) / buildAspect + 1) / 2 * innerWidth,
+            (1 - (v * clothSize[1] + clothMin[1])) / 2 * innerHeight];
+  };
+  for (let r = 0; r < rows - 1; r++) {
+    for (let c = 0; c < cols - 1; c++) {
+      const a = r * cols + c, b = a + 1, d = a + cols, e = d + 1;
+      const minX = Math.min(q[a * 2], q[b * 2], q[d * 2], q[e * 2]), maxX = Math.max(q[a * 2], q[b * 2], q[d * 2], q[e * 2]);
+      if (px < minX || px > maxX) continue;
+      const minY = Math.min(q[a * 2 + 1], q[b * 2 + 1], q[d * 2 + 1], q[e * 2 + 1]);
+      const maxY = Math.max(q[a * 2 + 1], q[b * 2 + 1], q[d * 2 + 1], q[e * 2 + 1]);
+      if (py < minY || py > maxY) continue;
+      tri(a, d, b, c, r, c, r + 1, c + 1, r);
+      tri(b, d, e, c + 1, r, c, r + 1, c + 1, r + 1);
+    }
+  }
+  return best;
+}
+
+// which printed link (0 = try camera again, 1 = use photo or video) is under this screen point, or -1
+function actionUnder(cx, cy) {
+  if (!actionRects.length) return -1;
+  const at = clothPrintAt(cx, cy);
+  if (!at) return -1;
+  return actionRects.findIndex(r => Math.abs(at[0] - r.x) <= r.w / 2 && Math.abs(at[1] - r.y) <= r.h / 2);
 }
 
 /* Is this screen point (CSS px) covered by the curtain as it is drawn right now? */
@@ -1311,10 +1468,11 @@ function frame(now) {
   if (!frozen) advance(dt);
 
   if (hover.mouse) {
-    const on = hover.inside && eyeVisibleAt(hover.x, hover.y);
+    const on = hover.inside && (eyeVisibleAt(hover.x, hover.y) || actionUnder(hover.x, hover.y) >= 0);
     if (on !== cursorOnEye) { cursorOnEye = on; canvas.style.cursor = on ? 'pointer' : ''; }
   }
 
+  if (actionRects.length) followActions();
   uploadVideo();
   if (videoReady) mix += (1 - mix) * (1 - Math.exp(-dt * 1.2));
 
@@ -1419,12 +1577,18 @@ const CTRL_SPEC = [
       note: '布抵抗被拉成斜菱形的力量。越低越像絲，越容易垂墜。布的軟硬在極軟區時會自動再調低。' },
     { k: 'iterations', label: '布的緊實度', min: 1, max: 20, step: 1, show: v => `每步 ${v} 次`,
       note: '每一步修正布長度的次數。越多，布越不會被拉長、越挺，也越吃效能。' },
-    { k: 'pleatWidth', label: '褶子的寬度', min: 0.08, max: 0.8, step: 0.01, show: ofScreen, rebuild: 'any',
-      note: '窗簾上每一道直向褶子的寬度。' },
-    { k: 'pleatDepth', label: '褶子的深度', min: 0, max: 0.6, step: 0.01, show: fixed(2), rebuild: 'any',
-      note: '褶子的凹凸程度，以深度除以寬度計算。0 是一塊平整的布。' },
-    { k: 'pleatJitter', label: '褶子的不規則', min: 0, max: 1, step: 0.01, show: fixed(2), rebuild: 'any',
-      note: '0 是整齊劃一的褶子，越大越像隨手掛上的窗簾。' },
+    { k: 'hooks', label: '掛點的數量', min: 2, max: 9, step: 1, show: v => `${v} 個`, rebuild: 'any',
+      note: '旗子上緣綁住的點，平均分佈，最外側兩個就是左上、右上角。' },
+    { k: 'swag', label: '掛點之間的垂落', min: 0, max: 0.6, step: 0.01, show: v => `${Math.round(v * 100)}% 間距`, rebuild: 'any',
+      note: '兩個掛點之間的布垂下多深，以兩點的距離為準。0 是拉得筆直，越大垂得越深，多出來的布也越多。' },
+    { k: 'gather', label: '掛點下的皺褶', ...pct(0, 100), rebuild: 'any',
+      note: '垂落多出來的布怎麼收。0% 是乾淨的一道道弧形；越大，布越會往掛點擠，在掛點下方擠出直向的皺褶。' },
+    { k: 'hookSpan', label: '掛點的分佈寬度', min: 0.5, max: 1.3, step: 0.01, show: v => `${Math.round(v * 100)}% 畫面寬`, rebuild: 'any',
+      note: '最左和最右兩個掛點之間的距離，中間的掛點平均分在其中。100% 剛好掛在畫面左右兩邊。' },
+    { k: 'hookY', label: '掛點的高度', min: 0.6, max: 1.3, step: 0.01, show: fixed(2), rebuild: 'any',
+      note: '掛點的高度。1 是畫面頂端，大於 1 掛點就藏到畫面外，越小則旗子越往下。' },
+    { k: 'flagLength', label: '旗子的長度', min: 0.5, max: 1.3, step: 0.005, show: v => `${(v * 100).toFixed(1)}% 畫面高`, rebuild: 'any',
+      note: '旗子從上緣到下緣有多長。比畫面短時，下緣兩角會露出背景，看得到下緣中間往下彎。' },
     { k: 'particlesTouch', label: '手機的布料粒子數', min: 400, max: 5200, step: 100, show: v => `${v} 點`, rebuild: 'touch',
       note: coarse ? '手機上布料的精細度。越多越細緻，也越吃效能。'
                    : '手機上布料的精細度。桌機不套用，可用開發者工具的手機模式預覽。' },
@@ -1454,8 +1618,8 @@ const CTRL_SPEC = [
       note: '褶子背光那一側有多暗。越暗，褶子的凹凸越明顯。' },
     { k: 'weavePx', label: '織紋的間距', min: 1, max: 10, step: 0.5, show: v => `${v.toFixed(1)} px`, apply: updateDerived,
       note: '紗布經緯線之間的距離（螢幕像素）。越大，織紋越粗、越看得出是布。' },
-    { k: 'hemPx', label: '下襬的寬度', min: 0, max: 40, step: 1, show: v => `${v} px`, apply: updateDerived,
-      note: '布最下方對摺成雙層的那一條，顏色會比較密。0 代表沒有下襬。' },
+    { k: 'hemPx', label: '上下縫邊的寬度', min: 0, max: 40, step: 1, show: v => `${v} px`, apply: updateDerived,
+      note: '旗子最上緣與最下緣對摺成雙層的那一條，顏色會比較密。0 代表沒有縫邊。' },
     { k: 'eyeSize', label: '背景眼睛的大小', min: 0, max: 300, step: 1, show: v => `${v}（設計稿 50）`,
       note: '簾後背景正中央那隻眼睛的大小，以設計稿 388 × 743 的畫面為準，跟布上的字一起縮放。0 代表不顯示。' },
   ] },
@@ -1561,8 +1725,8 @@ document.getElementById('p-reset').addEventListener('click', () => {
   setFov(CFG.fov);
   const target = coarse ? CFG.particlesTouch : CFG.particlesDesk;
   const b = builtWith;
-  if (!b || b.target !== target || b.pleatWidth !== CFG.pleatWidth ||
-      b.pleatDepth !== CFG.pleatDepth || b.pleatJitter !== CFG.pleatJitter) buildCloth();
+  if (!b || b.target !== target || ['hooks', 'swag', 'gather', 'hookSpan', 'hookY', 'flagLength']
+        .some(k => b[k] !== CFG[k])) buildCloth();
   syncPanel();
 });
 
@@ -1591,9 +1755,10 @@ window.tongPoo = {
   advance,                                  // advance(realSeconds) without waiting for frames
   freeze(v = true) { frozen = v; },         // stop the clock (for stills)
   setBend,
-  eyeVisibleAt, clothCovers,
+  rebuild() { buildCloth(); },              // after changing hooks / swag / gather / hookSpan / hookY / flagLength here
+  eyeVisibleAt, clothCovers, clothAt, clothPrintAt, actionRects: () => actionRects,
   bench(n = 120) { const t0 = performance.now(); for (let i = 0; i < n; i++) step(CFG.sub, simT); return (performance.now() - t0) / n; },
-  info() { return { cols, rows, particles: N, constraints: cCount }; },
+  info() { return { cols, rows, perGap, particles: N, constraints: cCount }; },
   stats() {
     let by = 0, bz = 0, maxZ = -9, stretch = 0;
     const r0 = (rows - 1) * cols;
@@ -1605,7 +1770,13 @@ window.tongPoo = {
       const d = Math.hypot(pos[b] - pos[a], pos[b + 1] - pos[a + 1], pos[b + 2] - pos[a + 2]);
       stretch = Math.max(stretch, d / cR[k]);
     }
-    return { hemY: by / cols, hemZ: bz / cols, maxZ, stretch, s: wind.s, W: wind.W, sigma: wind.sigma };
+    // how far the middle of the central drop hangs below its ties, at the top and the bottom edge,
+    // as a share of the gap between ties
+    const g = Math.floor((cols - 1) / perGap / 2) * perGap, mid = g + (perGap >> 1);
+    const topSag = (pos[g * 3 + 1] - pos[mid * 3 + 1]) / gapW;
+    const botSag = (pos[(r0 + g) * 3 + 1] - pos[(r0 + mid) * 3 + 1]) / gapW;
+    return { hemY: by / cols, hemZ: bz / cols, maxZ, stretch, topSag, botSag, botEndY: pos[r0 * 3 + 1],
+             s: wind.s, W: wind.W, sigma: wind.sigma };
   },
 };
 })();
