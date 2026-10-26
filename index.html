@@ -203,10 +203,11 @@ const CFG = {
   // fabric
   particlesTouch: 800,   // cloth resolution on phones
   particlesDesk: 5200,   // cloth resolution on desktop
-  sheer: 0.7,            // opacity seen face-on; folds turned away look denser
+  sheer: 1,              // the curtain's real opacity (1 = nothing behind it shows until the wind lifts it)
+  skyTint: 0.55,          // the sky gradient laid over the curtain (0 = none, 1 = picture fully covered)
   pleatWidth: 0.26,      // one pleat, in units of half the screen height
   pleatDepth: 0.34,      // pleat amplitude ÷ pleat width (the previous version was ≈0.07, so ≈5× deeper)
-  pleatJitter: 0.35,     // irregularity of the pleats (0 = perfect sine)
+  pleatJitter: 0.5,     // irregularity of the pleats (0 = perfect sine)
   bend: 0,               // low = soft, fine wrinkles; high = stiffer, rounder folds
   shear: 0.5,            // below bend 0.02 this eases off too, for an extra-soft drape (see shearFor)
   iterations: 6,         // constraint passes per step (higher = less stretchy)
@@ -242,7 +243,7 @@ const CFG = {
   hemPx: 15,              // folded hem at the bottom edge, in CSS px
 
   // look
-  fabricLight: 0.8,      // brightness of the lit side of each fold
+  fabricLight: 0.9,      // brightness of the lit side of each fold
   fabricShadow: 0.75,    // brightness of the shaded side (lower = darker folds)
   camSaturation: 0.55,   // colour of the camera picture (0 = black & white)
   eyeSize: 50,           // eye.png behind the curtain, in Figma px on the 388 × 743 frame (0 = hidden)
@@ -384,12 +385,13 @@ varying float vY;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void main() {
   vec3 c = sky(1.0 - vY);
-  // eye.png sits on the sky, centred; its texture is premultiplied
+  // eye.png sits on the sky, centred; its texture is premultiplied.
+  // Sample it on every pixel (not inside an if): a mipmapped lookup inside a branch
+  // picks a wrong, blurry level along the branch edge and draws a thin square outline.
   vec2 e = (gl_FragCoord.xy - uEyeRect.xy) / (2.0 * max(uEyeRect.z, 0.5)) + 0.5;
-  if (uEyeOn > 0.5 && e.x >= 0.0 && e.x <= 1.0 && e.y >= 0.0 && e.y <= 1.0) {
-    vec4 eye = texture2D(uEye, e);
-    c = c * (1.0 - eye.a) + eye.rgb;
-  }
+  vec4 eye = texture2D(uEye, e);
+  float inside = step(0.0, e.x) * step(e.x, 1.0) * step(0.0, e.y) * step(e.y, 1.0) * uEyeOn;
+  c = c * (1.0 - eye.a * inside) + eye.rgb * inside;
   c += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
   gl_FragColor = vec4(c, 1.0);
 }
@@ -420,6 +422,8 @@ uniform float uVideoAspect;
 uniform float uMirror;
 uniform float uScreenAspect;
 uniform float uSheer;
+uniform float uSkyTint;
+uniform float uScreenH;
 uniform float uLight;
 uniform float uShadow;
 uniform float uSat;
@@ -468,11 +472,11 @@ void main() {
   vec3 hlf = normalize(L + v);
   col += pow(max(dot(n, hlf), 0.0), 16.0) * 0.05;
 
-  // sheer fabric looks denser where it turns away from you, but stays see-through
-  float a = 1.0 - pow(1.0 - uSheer, mix(1.0, 1.0 / max(ndv, 0.25), 0.55));
-  // folds in shadow hold back a little more light from behind
-  a += (1.0 - a) * (1.0 - wrap) * 0.10;
-
+  // How much shows through the gauze. The same rules shape two things:
+  // the real see-through (uSheer, reveals the eye behind) and the printed sky veil (uSkyTint).
+  // Fabric turned away from you, folds in shadow, the threads and the doubled hem all show less.
+  float ex = mix(1.0, 1.0 / max(ndv, 0.25), 0.55);
+  float keep = 1.0 - (1.0 - wrap) * 0.10;
 #ifdef WEAVE
   vec2 g = vUv * uWeave;
   vec2 fw = fwidth(g);
@@ -482,14 +486,19 @@ void main() {
   vec2 f = 1.0 - smoothstep(0.15, 0.4, fw);
   f *= smoothstep(0.35, 0.7, ndv);   // threads blur out where the fabric turns edge-on
   float w = max(th.x * f.x, th.y * f.y);
-  a *= 1.0 + 0.11 * (w - 0.5) * max(f.x, f.y);
+  keep *= 1.0 - 0.11 * (w - 0.5) * max(f.x, f.y);
 #endif
+  float hem = 1.0 - smoothstep(uHem * 0.75, uHem, vUv.y);   // folded hem: two layers
 
-  // folded hem: two layers of gauze along the bottom edge
-  float hem = 1.0 - smoothstep(uHem * 0.75, uHem, vUv.y);
-  a = mix(a, 1.0 - (1.0 - a) * (1.0 - a), hem);
+  float through = clamp(pow(1.0 - uSheer, ex) * keep, 0.0, 1.0);
+  through = mix(through, through * through, hem);
+  float veil = clamp(pow(uSkyTint, ex) * keep, 0.0, 1.0);
+  veil = mix(veil, veil * veil, hem);
 
-  gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
+  // the sky as it would look behind this spot of the screen, but without the eye
+  col = mix(col, sky(1.0 - gl_FragCoord.y / uScreenH), veil);
+
+  gl_FragColor = vec4(col, 1.0 - through);
 }
 `);
 
@@ -808,29 +817,54 @@ function updateWind(dt) {
   wind.sigma = CFG.sigmaMin + (CFG.sigmaMax - CFG.sigmaMin) * Math.pow(e, 1.3);
 }
 
+/* The eye behind the curtain links out, but only where the wind has actually uncovered it. */
+const EYE_URL = 'https://en.wikipedia.org/wiki/Internet_censorship_in_China';
+let windPointer = null;                 // the finger (or mouse) that drives the wind
+const presses = new Map();              // pointerId → where and when it went down, and whether it hit the eye
+const hover = { x: 0, y: 0, mouse: false, inside: false };
+let cursorOnEye = false;
+
 canvas.addEventListener('pointerdown', e => {
+  const onEye = eyeVisibleAt(e.clientX, e.clientY);
+  presses.set(e.pointerId, { t: performance.now(), x: e.clientX, y: e.clientY, onEye });
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+  // a second finger tapping the uncovered eye leaves the first finger's wind where it is
+  if (onEye && wind.down && windPointer !== null && windPointer !== e.pointerId) return;
+  windPointer = e.pointerId;
   wind.down = true; wind.active = true;
   pointerAt(e, true);
   wind.lastMove = -1e9;            // a finger set down is already resting
-  try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
   startCamera();
 });
 canvas.addEventListener('pointermove', e => {
+  hover.x = e.clientX; hover.y = e.clientY; hover.mouse = e.pointerType === 'mouse'; hover.inside = true;
   if (e.pointerType === 'mouse') {
     const fresh = !wind.active;
     wind.active = true;
     pointerAt(e, fresh);
-  } else if (wind.down) {
+  } else if (wind.down && e.pointerId === windPointer) {
     pointerAt(e, false);
   }
 });
 const endPointer = e => {
-  wind.down = false;
-  if (e.pointerType !== 'mouse') wind.active = false;
+  if (e.pointerType === 'mouse' || e.pointerId === windPointer) {
+    wind.down = false;
+    if (e.pointerType !== 'mouse') wind.active = false;
+    windPointer = null;
+  }
+  // a quick tap or click on the uncovered eye opens the link (inside the gesture, so it isn't blocked)
+  const p = presses.get(e.pointerId);
+  presses.delete(e.pointerId);
+  if (e.type === 'pointerup' && p && p.onEye && performance.now() - p.t < 1000 &&
+      Math.hypot(e.clientX - p.x, e.clientY - p.y) < 14 && eyeVisibleAt(e.clientX, e.clientY)) {
+    window.open(EYE_URL, '_blank', 'noopener');
+  }
 };
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
-canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') wind.active = false; });
+canvas.addEventListener('pointerleave', e => {
+  if (e.pointerType === 'mouse') { wind.active = false; hover.inside = false; }
+});
 document.addEventListener('mouseleave', () => { wind.active = false; });
 window.addEventListener('blur', () => { wind.active = false; wind.down = false; });
 canvas.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startCamera(); } });
@@ -933,6 +967,48 @@ function applyTethers() {
       p[i3] = p[h] + dx * s; p[i3 + 1] = p[h + 1] + dy * s; p[i3 + 2] = p[h + 2] + dz * s;
     }
   }
+}
+
+/* Is this screen point (CSS px) covered by the curtain as it is drawn right now? */
+let projXY = null;
+const inTri = (px, py, ax, ay, bx, by, cx, cy) => {
+  const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
+  const d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
+  const d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
+  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+};
+function clothCovers(cx, cy) {
+  if (!rend) return true;
+  const aspect = innerWidth / innerHeight;
+  const px = (cx / innerWidth) * 2 - 1, py = 1 - (cy / innerHeight) * 2;
+  if (!projXY || projXY.length !== N * 2) projXY = new Float32Array(N * 2);
+  const q = projXY, p = rend;
+  for (let i = 0; i < N; i++) {
+    const w = camD - p[i * 3 + 2];
+    q[i * 2] = p[i * 3] * camD / w / aspect;
+    q[i * 2 + 1] = p[i * 3 + 1] * camD / w;
+  }
+  for (let r = 0; r < rows - 1; r++) {
+    for (let c = 0; c < cols - 1; c++) {
+      const a = (r * cols + c) * 2, b = a + 2, d = a + cols * 2, e = d + 2;
+      const minX = Math.min(q[a], q[b], q[d], q[e]), maxX = Math.max(q[a], q[b], q[d], q[e]);
+      if (px < minX || px > maxX) continue;
+      const minY = Math.min(q[a + 1], q[b + 1], q[d + 1], q[e + 1]), maxY = Math.max(q[a + 1], q[b + 1], q[d + 1], q[e + 1]);
+      if (py < minY || py > maxY) continue;
+      if (inTri(px, py, q[a], q[a + 1], q[d], q[d + 1], q[b], q[b + 1]) ||
+          inTri(px, py, q[b], q[b + 1], q[d], q[d + 1], q[e], q[e + 1])) return true;
+    }
+  }
+  return false;
+}
+
+// on the round eye, and nothing of the curtain in front of it there
+function eyeVisibleAt(cx, cy) {
+  if (!eyeReady || CFG.eyeSize <= 0) return false;
+  const r = CFG.eyeSize / 2 * Math.min(innerWidth / 388, innerHeight / 743);
+  const dx = cx - innerWidth / 2, dy = cy - innerHeight / 2;
+  if (dx * dx + dy * dy > r * r) return false;
+  return !clothCovers(cx, cy);
 }
 
 /* positions shown on screen: between the last two physics steps */
@@ -1190,6 +1266,8 @@ function draw(now) {
   gl.uniform1f(cp.u.uMirror, mirror);
   gl.uniform1f(cp.u.uScreenAspect, buildAspect);
   gl.uniform1f(cp.u.uSheer, CFG.sheer);
+  gl.uniform1f(cp.u.uSkyTint, CFG.skyTint);
+  gl.uniform1f(cp.u.uScreenH, canvas.height);
   gl.uniform1f(cp.u.uLight, CFG.fabricLight);
   gl.uniform1f(cp.u.uShadow, CFG.fabricShadow);
   gl.uniform1f(cp.u.uSat, CFG.camSaturation);
@@ -1231,6 +1309,11 @@ function frame(now) {
   if (dt > 0.1) dt = 0.1;
 
   if (!frozen) advance(dt);
+
+  if (hover.mouse) {
+    const on = hover.inside && eyeVisibleAt(hover.x, hover.y);
+    if (on !== cursorOnEye) { cursorOnEye = on; canvas.style.cursor = on ? 'pointer' : ''; }
+  }
 
   uploadVideo();
   if (videoReady) mix += (1 - mix) * (1 - Math.exp(-dt * 1.2));
@@ -1360,7 +1443,9 @@ const CTRL_SPEC = [
   ] },
   { group: '畫面與布的外觀', items: [
     { k: 'sheer', label: '相機畫面的透明度', ...invPct(0, 95),
-      note: '印在布上的畫面有多透。布轉到側面、背光的地方會自然變得比較不透。' },
+      note: '簾子本身有多透，透過去看到的是真正的背景和眼睛。0% 時要等風把簾子掀開才看得到眼睛。' },
+    { k: 'skyTint', label: '背景漸層的透明度', ...invPct(0, 100),
+      note: '疊在簾子上的一層背景漸層（不含眼睛）。越透明，相機畫面越清楚；0% 會把畫面完全蓋成漸層。' },
     { k: 'camSaturation', label: '相機畫面的彩度', ...pct(0, 200), ends: ['黑白', '濃烈'],
       note: '相機、照片或影片的顏色濃淡。100% 是原色。' },
     { k: 'fabricLight', label: '布的亮部亮度', ...pct(50, 160),
@@ -1506,6 +1591,7 @@ window.tongPoo = {
   advance,                                  // advance(realSeconds) without waiting for frames
   freeze(v = true) { frozen = v; },         // stop the clock (for stills)
   setBend,
+  eyeVisibleAt, clothCovers,
   bench(n = 120) { const t0 = performance.now(); for (let i = 0; i < n; i++) step(CFG.sub, simT); return (performance.now() - t0) / n; },
   info() { return { cols, rows, particles: N, constraints: cCount }; },
   stats() {
