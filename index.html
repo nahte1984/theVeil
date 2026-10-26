@@ -219,16 +219,16 @@ const CFG = {
   ambient: 0.08,         // faint breeze that keeps the curtain breathing
 
   // wind from the pointer
-  windMax: 2.5,          // wind speed after a long rest (world units / sim s)
+  windMax: 2.25,          // wind speed after a long rest (world units / sim s)
   windReach: 2.4,        // the gust fades out this far in front of the window
   lift: 0.22,            // wind also rises a little, so the curtain floats up
   baseWind: 0.6,        // a light breath as soon as the pointer is on the curtain
-  buildTime: 0.5,        // seconds of resting to reach ~63% strength (≈95% at 3×)
+  buildTime: 0.3,        // seconds of resting to reach ~63% strength (≈95% at 3×)
   stillPx: 25,           // pointer counts as resting while it stays inside this radius
   moveDecay: 0,        // how fast the built-up wind weakens while the pointer travels
-  releaseDecay: 1.5,    // how fast it dies away after the pointer leaves
+  releaseDecay: 2,    // how fast it dies away after the pointer leaves
   follow: 1.8,           // how quickly the gust drifts to a new pointer position
-  sigmaMin: 0.106,       // gust radius when weak …
+  sigmaMin: 0.8,       // gust radius when weak …
   sigmaMax: 0.7,         // … and when strong
   flutter: 0.25,         // slow travelling unevenness inside the gust
 
