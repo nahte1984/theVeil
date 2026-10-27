@@ -49,7 +49,7 @@
     overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
   }
 
-  /* ---------- tuning panel (desktop, press T) ---------- */
+  /* ---------- tuning panel (press T; on a phone, tap twice with two fingers) ---------- */
   #panel {
     --fg: #f6f2ea;
     --muted: rgba(246, 242, 234, 0.6);
@@ -80,7 +80,11 @@
     padding-bottom: 10px; border-bottom: 1px solid var(--line);
   }
   #panel .name { font: 400 21px/1 Radley, Georgia, serif; letter-spacing: -.02em; }
-  #panel .hint { color: var(--muted); font-size: 12px; }
+  #panel #p-close {
+    margin: -6px -8px -6px 0; padding: 6px 8px; border: 0; border-radius: 6px;
+    background: none; color: var(--muted); font-size: 12px; letter-spacing: .04em;
+  }
+  #panel #p-close:hover { background: none; color: var(--fg); }
   #panel kbd {
     display: inline-block; min-width: 1.4em; padding: 1px 5px; margin-right: 4px;
     border: 1px solid var(--line); border-radius: 4px; text-align: center;
@@ -154,6 +158,25 @@
   }
   #panel button:hover { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .3); }
   #panel button:focus-visible { outline: 1px solid var(--fg); outline-offset: 2px; }
+  /* phones: a sheet along the bottom, so the top of the flag stays in view while you tune */
+  @media (max-width: 600px) {
+    #panel {
+      top: auto; width: auto; max-height: 56%;
+      left: max(10px, env(safe-area-inset-left, 0px));
+      right: max(10px, env(safe-area-inset-right, 0px));
+      bottom: max(10px, env(safe-area-inset-bottom, 0px));
+      padding: 14px 16px 12px;
+      transform: translateY(12px);
+    }
+  }
+  /* fingers: bigger thumbs and buttons */
+  @media (pointer: coarse) {
+    #panel input[type="range"] { height: 30px; }
+    #panel input[type="range"]::-webkit-slider-thumb { width: 22px; height: 22px; margin-top: -10px; }
+    #panel input[type="range"]::-moz-range-thumb { width: 22px; height: 22px; }
+    #panel footer button { padding: 8px 16px; font-size: 13px; }
+    #panel #p-close { font-size: 13px; }
+  }
   @media (prefers-reduced-motion: reduce) {
     #panel, #panel.open { transition: none; transform: none; }
   }
@@ -175,7 +198,7 @@
 <aside id="panel" aria-label="參數" aria-hidden="true">
   <header>
     <span class="name">TongPoo</span>
-    <span class="hint"><kbd>T</kbd>收起</span>
+    <button id="p-close" type="button" aria-label="收起參數"><kbd>T</kbd>收起</button>
   </header>
   <div class="body" id="controls"></div>
   <footer>
@@ -207,7 +230,7 @@ const CFG = {
   sheer: 1,              // the curtain's real opacity (1 = nothing behind it shows until the wind lifts it)
   skyTint: 0.55,          // the sky gradient laid over the curtain (0 = none, 1 = picture fully covered)
   hooks: 4,              // ties along the top edge, evenly spaced; the outer two are the top corners
-  swag: 0.3,             // how deep the fabric droops between two ties, as a share of the gap between them
+  swag: 0.35,            // how deep the fabric droops between two ties, as a share of the gap between them
   gather: 1,             // 0 = each drop stays a clean scallop, 1 = the extra fabric bunches into folds under the ties
   hookSpan: 1,           // distance between the outer ties, as a share of the screen width
   hookY: 1,              // height of the ties (1 = top edge of the screen)
@@ -231,7 +254,7 @@ const CFG = {
   buildTime: 0.3,        // seconds of resting to reach ~63% strength (≈95% at 3×)
   stillPx: 25,           // pointer counts as resting while it stays inside this radius
   moveDecay: 0,        // how fast the built-up wind weakens while the pointer travels
-  releaseDecay: 2,    // how fast it dies away after the pointer leaves
+  releaseDecay: 3,    // how fast it dies away after the pointer leaves
   follow: 1.8,           // how quickly the gust drifts to a new pointer position
   sigmaMin: 0.8,       // gust radius when weak …
   sigmaMax: 0.7,         // … and when strong
@@ -1510,7 +1533,7 @@ if (document.fonts && document.fonts.load) {
 }
 requestAnimationFrame(frame);
 
-/* ---------------- Tuning panel: press T on a keyboard ---------------- */
+/* ---------------- Tuning panel: press T on a keyboard, or tap twice with two fingers ---------------- */
 const panel = document.getElementById('panel');
 const DEFAULTS = { ...CFG };
 
@@ -1711,6 +1734,41 @@ function togglePanel(force) {
   panel.setAttribute('aria-hidden', String(!open));
   if (!open && panel.contains(document.activeElement)) canvas.focus({ preventScroll: true });
 }
+
+/* On a touch screen: tap twice with two fingers to open or close the panel.
+   One finger is the wind, so single taps and ordinary double-taps keep blowing and never open it. */
+const twoTap = { down: new Map(), most: 0, t0: 0, moved: false, last: -1e9 };
+canvas.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse') return;
+  const g = twoTap;
+  if (g.down.size === 0) { g.most = 0; g.t0 = performance.now(); g.moved = false; }
+  g.down.set(e.pointerId, [e.clientX, e.clientY]);
+  g.most = Math.max(g.most, g.down.size);
+});
+canvas.addEventListener('pointermove', e => {
+  const at = twoTap.down.get(e.pointerId);
+  if (at && Math.hypot(e.clientX - at[0], e.clientY - at[1]) > 24) twoTap.moved = true;
+});
+const twoTapEnd = e => {
+  const g = twoTap, at = g.down.get(e.pointerId);
+  if (!at) return;
+  if (Math.hypot(e.clientX - at[0], e.clientY - at[1]) > 24) g.moved = true;
+  g.down.delete(e.pointerId);
+  if (g.down.size) return;
+  const now = performance.now();
+  if (e.type === 'pointerup' && g.most === 2 && !g.moved && now - g.t0 < 600) {
+    if (now - g.last < 800) { g.last = -1e9; togglePanel(); }
+    else g.last = now;
+  } else {
+    g.last = -1e9;
+  }
+};
+canvas.addEventListener('pointerup', twoTapEnd);
+canvas.addEventListener('pointercancel', twoTapEnd);
+
+const closeBtn = document.getElementById('p-close');
+closeBtn.addEventListener('click', () => togglePanel(false));
+if (coarse) { closeBtn.textContent = '收起 ✕'; closeBtn.title = '兩指點兩下也可以開關'; }
 
 window.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
