@@ -277,7 +277,7 @@ const CFG = {
   fabricLight: 0.9,      // brightness of the lit side of each fold
   fabricShadow: 0.75,    // brightness of the shaded side (lower = darker folds)
   camSaturation: 0.55,   // colour of the camera picture (0 = black & white)
-  photoSize: 165,        // width of the photo behind the curtain, in Figma px on the 388 × 743 frame (0 = hidden)
+  photoSize: 280,        // width of the photo behind the curtain, in Figma px on the 388 × 743 frame (0 = hidden)
 };
 
 /* Sky gradients from the Figma frame "bgSet" (304:2), top → bottom:
@@ -633,8 +633,11 @@ function watchPhoto(now) {
   photoCheckAt = now;
   if (!photo.ready[photo.front] || CFG.photoSize <= 0) return;
   const r = photoRect(), pts = [];
-  for (let j = 0; j < 6; j++) for (let i = 0; i < 9; i++) {
-    pts.push([r.x - r.hw + 1 + (2 * r.hw - 2) * i / 8, r.y - r.hh + 1 + (2 * r.hh - 2) * j / 5]);
+  // test points about every 14 px across the photo, edges included
+  const nx = Math.min(24, Math.max(4, Math.ceil(2 * r.hw / 14) + 1));
+  const ny = Math.min(16, Math.max(3, Math.ceil(2 * r.hh / 14) + 1));
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    pts.push([r.x - r.hw + 1 + (2 * r.hw - 2) * i / (nx - 1), r.y - r.hh + 1 + (2 * r.hh - 2) * j / (ny - 1)]);
   }
   if (!coveredPoints(pts).every(Boolean)) { photo.seen = true; photoCoveredRuns = 0; return; }
   if (!photo.seen || ++photoCoveredRuns < 2) return;              // covered for two checks in a row
